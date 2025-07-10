@@ -199,10 +199,14 @@ public class ConstructionPhialsScript extends Script {
         
         log.debug("Building at hotspot {}", hotspotId);
         if (Rs2GameObject.interact(hotspot, "Build")) {
-            sleepUntil(this::hasFurnitureInterfaceOpen, 3000);
-            selectOption();
-            sleepUntil(() -> Rs2GameObject.findObjectById(builtId) != null, 5000);
-            log.debug("Build action completed");
+            if (sleepUntil(this::hasFurnitureInterfaceOpen, 3000)) {
+                // Only select option if the interface actually opened
+                selectOption();
+                sleepUntil(() -> Rs2GameObject.findObjectById(builtId) != null, 5000);
+                log.debug("Build action completed");
+            } else {
+                log.debug("Furniture interface did not open - likely out of planks");
+            }
         }
     }
 
@@ -211,6 +215,12 @@ public class ConstructionPhialsScript extends Script {
     }
 
     private void selectOption() {
+        // Double-check the interface is still open before pressing keys
+        if (!hasFurnitureInterfaceOpen()) {
+            log.warn("Furniture interface closed before selecting option");
+            return;
+        }
+        
         switch (cfg.furniture()) {
             case WOODEN_LARDER:      
                 Rs2Keyboard.keyPress('1'); 
@@ -255,6 +265,13 @@ public class ConstructionPhialsScript extends Script {
     }
 
     private void unnoteCycle() {
+        // Safety check: ensure we're actually outside the house
+        if (isInHouse()) {
+            log.warn("Still inside house during UNNOTE state, transitioning to EXIT_HOUSE");
+            state = ConstructionPhialsState.EXIT_HOUSE;
+            return;
+        }
+        
         // First check if we already have enough unnoted planks
         int currentPlanks = Rs2Inventory.count(unnotedPlankId());
         if (currentPlanks >= UNNOTE_THRESHOLD) {
@@ -310,16 +327,25 @@ public class ConstructionPhialsScript extends Script {
             sleep(100, 200); // Small delay after using item
             if (Rs2Npc.interact(NpcID.PHIALS, "Use")) {
                 log.debug("Used noted planks on Phials");
-                handleDialogue();
+                // Wait for dialogue to appear
+                if (Rs2Dialogue.sleepUntilInDialogue()) {
+                    handleDialogue();
+                }
             } else {
                 log.debug("Failed to use on Phials, trying Exchange-All");
-                Rs2Npc.interact(NpcID.PHIALS, "Exchange-All");
-                handleDialogue();
+                if (Rs2Npc.interact(NpcID.PHIALS, "Exchange-All")) {
+                    if (Rs2Dialogue.sleepUntilInDialogue()) {
+                        handleDialogue();
+                    }
+                }
             }
         } else {
             log.debug("Failed to use noted planks, trying Exchange-All directly");
-            Rs2Npc.interact(NpcID.PHIALS, "Exchange-All");
-            handleDialogue();
+            if (Rs2Npc.interact(NpcID.PHIALS, "Exchange-All")) {
+                if (Rs2Dialogue.sleepUntilInDialogue()) {
+                    handleDialogue();
+                }
+            }
         }
         
         sleepUntil(() -> Rs2Inventory.count(unnotedPlankId()) >= 24 || Rs2Inventory.count(noted) == 0, 4000);
@@ -328,24 +354,15 @@ public class ConstructionPhialsScript extends Script {
     private void handleDialogue() {
         log.debug("Handling Phials dialogue");
         
-        // Wait for dialogue to appear
-        sleep(300, 500);
-        
-        // Look for "Exchange All: X coins" option
+        // Look for "Exchange All: X coins" option immediately
         if (Rs2Dialogue.hasSelectAnOption()) {
             // Click any option that starts with "Exchange All:" (using partial match)
             if (Rs2Dialogue.clickOption("Exchange All:", false)) {
                 log.debug("Selected 'Exchange All:' option");
-                sleep(300, 500);
+                // Exchange happens immediately after clicking, no continue needed
             } else {
                 log.warn("Could not find 'Exchange All:' option in dialogue");
             }
-        }
-        
-        // Handle any continue dialogues
-        if (Rs2Dialogue.sleepUntilHasContinue()) {
-            Rs2Dialogue.clickContinue();
-            log.debug("Clicked continue after exchange");
         }
     }
 
