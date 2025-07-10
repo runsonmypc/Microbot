@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.constructionphials.enums;
+package net.runelite.client.plugins.microbot.pert.constructionphials.enums;
 
 public enum ConstructionPhialsState {
     BUILD,

@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.microbot.constructionphials;
+package net.runelite.client.plugins.microbot.pert.constructionphials;
 
 import com.google.inject.Inject;
 import java.awt.Dimension;
