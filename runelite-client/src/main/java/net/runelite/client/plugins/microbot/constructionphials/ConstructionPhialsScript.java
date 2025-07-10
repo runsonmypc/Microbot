@@ -79,10 +79,16 @@ public class ConstructionPhialsScript extends Script {
         }
     }
 
+    private void debug(String message, Object... args) {
+        if (cfg.debug()) {
+            log.debug(message, args);
+        }
+    }
+
     private void loop() {
         if (!Microbot.isLoggedIn()) {
             if (state != ConstructionPhialsState.STOP) {
-                log.debug("Not logged in, transitioning to STOP state");
+                debug("Not logged in, transitioning to STOP state");
                 state = ConstructionPhialsState.STOP;
             }
             return;
@@ -124,7 +130,7 @@ public class ConstructionPhialsScript extends Script {
         }
         
         if (oldState != state) {
-            log.debug("State transition: {} -> {}", oldState, state);
+            debug("State transition: {} -> {}", oldState, state);
         }
     }
 
@@ -142,7 +148,8 @@ public class ConstructionPhialsScript extends Script {
         }
         
         if (Rs2Inventory.count(unnotedPlankId()) < UNNOTE_THRESHOLD) {
-            log.info("Low on planks ({} < {}), exiting house", Rs2Inventory.count(unnotedPlankId()), UNNOTE_THRESHOLD);
+            int plankCount = Rs2Inventory.count(unnotedPlankId());
+            log.info("Low on planks: {} remaining (need at least {}), exiting house", plankCount, UNNOTE_THRESHOLD);
             // Small delay to ensure we're not mid-animation or mid-action
             sleep(600, 1000);
             state = ConstructionPhialsState.EXIT_HOUSE;
@@ -162,7 +169,7 @@ public class ConstructionPhialsScript extends Script {
         }
         
         if (Rs2Random.between(1, 1200) == 1) {
-            log.debug("Triggering anti-ban");
+            debug("Triggering anti-ban");
             state = ConstructionPhialsState.ANTIBAN;
         }
     }
@@ -175,12 +182,12 @@ public class ConstructionPhialsScript extends Script {
         // Check for built furniture first
         TileObject built = Rs2GameObject.findObjectById(builtId);
         if (built != null) {
-            log.debug("Found built furniture ID {}, attempting removal", builtId);
+            debug("Found built furniture ID {}, attempting removal", builtId);
             if (Rs2GameObject.interact(built, "Remove")) {
                 Rs2Dialogue.sleepUntilHasQuestion("Really remove it?");
                 Rs2Dialogue.keyPressForDialogueOption(1);
                 sleepUntil(() -> Rs2GameObject.findObjectById(builtId) == null, 5000);
-                log.debug("Removed furniture ID {}", builtId);
+                debug("Removed furniture ID {}", builtId);
             }
             return;
         }
@@ -188,24 +195,24 @@ public class ConstructionPhialsScript extends Script {
         // No built furniture, check for hotspot
         TileObject hotspot = Rs2GameObject.findObjectById(hotspotId);
         if (hotspot == null) {
-            log.debug("No hotspot found with ID {}", hotspotId);
+            debug("No hotspot found with ID {}", hotspotId);
             return;
         }
         
         if (Rs2Player.isAnimating()) {
-            log.debug("Player is animating, skipping build");
+            debug("Player is animating, skipping build");
             return;
         }
         
-        log.debug("Building at hotspot {}", hotspotId);
+        debug("Building at hotspot {}", hotspotId);
         if (Rs2GameObject.interact(hotspot, "Build")) {
             if (sleepUntil(this::hasFurnitureInterfaceOpen, 3000)) {
                 // Only select option if the interface actually opened
                 selectOption();
                 sleepUntil(() -> Rs2GameObject.findObjectById(builtId) != null, 5000);
-                log.debug("Build action completed");
+                debug("Build action completed");
             } else {
-                log.debug("Furniture interface did not open - likely out of planks");
+                debug("Furniture interface did not open - likely out of planks");
             }
         }
     }
@@ -224,15 +231,15 @@ public class ConstructionPhialsScript extends Script {
         switch (cfg.furniture()) {
             case WOODEN_LARDER:      
                 Rs2Keyboard.keyPress('1'); 
-                log.debug("Selected option 1 for Wooden larder");
+                debug("Selected option 1 for Wooden larder");
                 break;
             case OAK_LARDER:         
                 Rs2Keyboard.keyPress('2'); 
-                log.debug("Selected option 2 for Oak larder");
+                debug("Selected option 2 for Oak larder");
                 break;
             case OAK_DUNGEON_DOOR:   
                 Rs2Keyboard.keyPress('1'); 
-                log.debug("Selected option 1 for Oak dungeon door");
+                debug("Selected option 1 for Oak dungeon door");
                 break;
         }
     }
@@ -251,7 +258,7 @@ public class ConstructionPhialsScript extends Script {
             return;
         }
         
-        log.debug("Exiting house through portal");
+        debug("Exiting house through portal");
         if (Rs2GameObject.interact(portal, "Exit")) {
             Rs2Player.waitForAnimation(1200);
             sleepUntil(() -> !isInHouse(), 3000);
@@ -282,13 +289,13 @@ public class ConstructionPhialsScript extends Script {
         
         // Check for and close any blocking interfaces (like level-up)
         if (Rs2Widget.hasWidget("Congratulations") || Rs2Widget.hasWidget("Level")) {
-            log.debug("Closing level-up interface");
+            debug("Closing level-up interface");
             Rs2Widget.clickWidget("Close");
             sleep(600, 1000);
         }
         
         if (Rs2Npc.getNpc(NpcID.PHIALS) == null) {
-            log.debug("Walking to Phials at {}", PHIALS_TILE);
+            debug("Walking to Phials at {}", PHIALS_TILE);
             
             // Check if we're in Rimmington area (should be close to the portal)
             WorldPoint playerLoc = Rs2Player.getWorldLocation();
@@ -320,19 +327,19 @@ public class ConstructionPhialsScript extends Script {
             return;
         }
         
-        log.debug("Unnoting planks with Phials (have {} noted)", Rs2Inventory.count(noted));
+        debug("Unnoting planks with Phials (have {} noted)", Rs2Inventory.count(noted));
         
         // Try use-on-NPC first
         if (Rs2Inventory.use(noted)) {
             sleep(100, 200); // Small delay after using item
             if (Rs2Npc.interact(NpcID.PHIALS, "Use")) {
-                log.debug("Used noted planks on Phials");
+                debug("Used noted planks on Phials");
                 // Wait for dialogue to appear
                 if (Rs2Dialogue.sleepUntilInDialogue()) {
                     handleDialogue();
                 }
             } else {
-                log.debug("Failed to use on Phials, trying Exchange-All");
+                debug("Failed to use on Phials, trying Exchange-All");
                 if (Rs2Npc.interact(NpcID.PHIALS, "Exchange-All")) {
                     if (Rs2Dialogue.sleepUntilInDialogue()) {
                         handleDialogue();
@@ -340,7 +347,7 @@ public class ConstructionPhialsScript extends Script {
                 }
             }
         } else {
-            log.debug("Failed to use noted planks, trying Exchange-All directly");
+            debug("Failed to use noted planks, trying Exchange-All directly");
             if (Rs2Npc.interact(NpcID.PHIALS, "Exchange-All")) {
                 if (Rs2Dialogue.sleepUntilInDialogue()) {
                     handleDialogue();
@@ -352,13 +359,13 @@ public class ConstructionPhialsScript extends Script {
     }
 
     private void handleDialogue() {
-        log.debug("Handling Phials dialogue");
+        debug("Handling Phials dialogue");
         
         // Look for "Exchange All: X coins" option immediately
         if (Rs2Dialogue.hasSelectAnOption()) {
             // Click any option that starts with "Exchange All:" (using partial match)
             if (Rs2Dialogue.clickOption("Exchange All:", false)) {
-                log.debug("Selected 'Exchange All:' option");
+                debug("Selected 'Exchange All:' option");
                 // Exchange happens immediately after clicking, no continue needed
             } else {
                 log.warn("Could not find 'Exchange All:' option in dialogue");
@@ -380,7 +387,7 @@ public class ConstructionPhialsScript extends Script {
             return;
         }
         
-        log.debug("Entering house in build mode");
+        debug("Entering house in build mode");
         if (Rs2GameObject.interact(portal, "Build mode")) {
             Rs2Player.waitForAnimation(1200);
             sleepUntil(this::isInHouse, 3000);
@@ -399,7 +406,7 @@ public class ConstructionPhialsScript extends Script {
             return;
         }
         
-        log.debug("Performing anti-ban actions");
+        debug("Performing anti-ban actions");
         
         if (cfg.antiban() == ConstructionPhialsConfig.AntibanProfile.SIMPLE) {
             sleep(Rs2Random.between(600, 1400));
@@ -412,7 +419,7 @@ public class ConstructionPhialsScript extends Script {
         Rs2Camera.setAngle(angle, 50);
         
         state = ConstructionPhialsState.BUILD;
-        log.debug("Anti-ban complete, returning to BUILD");
+        debug("Anti-ban complete, returning to BUILD");
     }
 
     private int unnotedPlankId() {
