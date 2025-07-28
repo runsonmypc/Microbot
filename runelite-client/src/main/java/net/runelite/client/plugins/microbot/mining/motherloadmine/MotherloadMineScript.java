@@ -317,7 +317,8 @@ public class MotherloadMineScript extends Script
             }
 
             // Use deposit-all when waterwheel repair is off and we have ores (from sack)
-            if (!config.repairWaterwheel() && hasOreInInventory())
+            // But only if we don't need to keep pickaxe in inventory
+            if (!config.repairWaterwheel() && hasOreInInventory() && !config.pickAxeInInventory())
             {
                 Rs2Bank.depositAll();
             }
