@@ -165,7 +165,7 @@ public class MotherloadMineScript extends Script
             resetMiningState();
             if (Rs2Inventory.hasItem(ItemID.PAYDIRT))
             {
-                if (Rs2GameObject.getGameObjects(o -> o.getId() == ObjectID.BROKEN_STRUT).size() > 1 && (Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer")))
+                if (config.repairWaterwheel() && Rs2GameObject.getGameObjects(o -> o.getId() == ObjectID.BROKEN_STRUT).size() > 1 && (Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer")))
                 {
                     status = MLMStatus.FIXING_WATERWHEEL;
                 }
@@ -188,7 +188,7 @@ public class MotherloadMineScript extends Script
 
     private boolean hasRequiredTools()
     {
-        boolean hasHammer = Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer");
+        boolean hasHammer = !config.repairWaterwheel() || Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer");
         boolean hasPickaxe = !config.pickAxeInInventory() || Rs2Inventory.hasItem(pickaxeName);
         return hasHammer && hasPickaxe;
     }
@@ -316,10 +316,10 @@ public class MotherloadMineScript extends Script
                 gemBagEmptiedThisCycle = true;
             }
 
-            Rs2Bank.depositAllExcept("hammer", pickaxeName, "gem bag");
+            Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
             sleep(100, 300);
 
-            if (!Rs2Inventory.hasItem("hammer") && !Rs2Equipment.isWearing("hammer"))
+            if (config.repairWaterwheel() && !Rs2Inventory.hasItem("hammer") && !Rs2Equipment.isWearing("hammer"))
             {
                 if (!Rs2Bank.hasItem("hammer"))
                 {

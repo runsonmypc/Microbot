@@ -61,4 +61,14 @@ public interface MotherloadMineConfig extends Config {
     default MLMMiningSpotList miningArea() {
         return MLMMiningSpotList.ANY;
     }
+
+    @ConfigItem(
+            keyName = "repairWaterwheel",
+            name = "Repair Waterwheel?",
+            description = "Enable/disable waterwheel repair (requires hammer)",
+            position = 5
+    )
+    default boolean repairWaterwheel() {
+        return true;
+    }
 }
