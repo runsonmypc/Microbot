@@ -316,7 +316,15 @@ public class MotherloadMineScript extends Script
                 gemBagEmptiedThisCycle = true;
             }
 
-            Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
+            // Use deposit-all when waterwheel repair is off and we have ores (from sack)
+            if (!config.repairWaterwheel() && hasOreInInventory())
+            {
+                Rs2Bank.depositAll();
+            }
+            else
+            {
+                Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
+            }
             sleep(100, 300);
 
             if (config.repairWaterwheel() && !Rs2Inventory.hasItem("hammer") && !Rs2Equipment.isWearing("hammer"))
