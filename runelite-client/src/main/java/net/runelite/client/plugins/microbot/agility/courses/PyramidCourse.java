@@ -2,6 +2,8 @@ package net.runelite.client.plugins.microbot.agility.courses;
 
 import net.runelite.api.GameObject;
 import net.runelite.api.GroundObject;
+import net.runelite.api.ItemID;
+import net.runelite.api.NPC;
 import net.runelite.api.Skill;
 import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
@@ -9,8 +11,10 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.agility.models.AgilityObstacleModel;
 import net.runelite.client.plugins.microbot.util.Global;
+import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 
@@ -22,6 +26,8 @@ import java.util.stream.Collectors;
 public class PyramidCourse implements AgilityCourseHandler {
     
     private static final WorldPoint START_POINT = new WorldPoint(3354, 2830, 0);
+    private static final WorldPoint SIMON_LOCATION = new WorldPoint(3343, 2827, 0);
+    private static final String SIMON_NAME = "Simon Templeton";
     private static final int PYRAMID_TOP_REGION = 12105;
     
     // Track when we started an obstacle to prevent clicking during traversal
@@ -34,7 +40,10 @@ public class PyramidCourse implements AgilityCourseHandler {
     
     // Track Cross Gap obstacles specifically
     private static long lastCrossGapTime = 0;
-    private static final long CROSS_GAP_COOLDOWN = 3500; // 3.5 seconds for Cross Gap
+    private static final long CROSS_GAP_COOLDOWN = 4500; // 4.5 seconds for Cross Gap - wait for XP
+    
+    // Track if we're handling pyramid turn-in
+    private static boolean handlingPyramidTurnIn = false;
     
     // Define the strict obstacle sequence to prevent skipping ahead
     private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
@@ -85,11 +94,11 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Low wall has intermediate positions as player walks north
         new ObstacleArea(3354, 2834, 3354, 2848, 1, 10865, new WorldPoint(3354, 2849, 1), "Low wall"),
         
-        // After low wall, player lands at (3354, 2850)
-        new ObstacleArea(3354, 2850, 3354, 2850, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
+        // After low wall, player lands at (3354, 2850) or (3355, 2850)
+        new ObstacleArea(3354, 2850, 3355, 2850, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
         
-        // After starting ledge, player moves east (3358-3363, 2851)
-        new ObstacleArea(3355, 2851, 3363, 2851, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
+        // Full area for approaching and traversing the ledge (includes area from (3354, 2851) to (3363, 2852))
+        new ObstacleArea(3354, 2851, 3363, 2852, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
         
         // After ledge, approaching plank from north
         new ObstacleArea(3364, 2850, 3375, 2852, 1, 10868, new WorldPoint(3368, 2845, 1), "Plank (approach)"),
@@ -250,6 +259,30 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         Microbot.log("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
         
+        // Check if inventory is full AND we're on ground level (not inside pyramid)
+        if (Rs2Inventory.isFull() && playerPos.getPlane() == 0) {
+            if (Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
+                // Inventory is full and has pyramid tops - handle turn-in
+                if (!handlingPyramidTurnIn) {
+                    Microbot.log("Inventory is full with pyramid tops and on ground level - going to Simon Templeton");
+                    handlingPyramidTurnIn = true;
+                }
+                
+                // Handle pyramid turn-in
+                if (handlePyramidTurnIn()) {
+                    return null; // Return null to prevent obstacle interaction
+                }
+            } else {
+                // Inventory is full but no pyramid tops - stop and warn
+                Microbot.showMessage("Inventory is full but no pyramid tops found! Clear inventory to continue.");
+                Microbot.log("WARNING: Inventory full without pyramid tops - stopping");
+                return null;
+            }
+        } else if (!Rs2Inventory.isFull()) {
+            // Reset turn-in flag when inventory is not full
+            handlingPyramidTurnIn = false;
+        }
+        
         // NEVER return an obstacle while moving or animating
         if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
             Microbot.log("Player is moving/animating, returning null to prevent clicking");
@@ -259,6 +292,19 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Special blocking for Cross Gap obstacles
         if (System.currentTimeMillis() - lastCrossGapTime < CROSS_GAP_COOLDOWN) {
             Microbot.log("Cross Gap cooldown active, returning null");
+            return null;
+        }
+        
+        // Double-check movement after a brief moment - animations can have pauses
+        try {
+            Thread.sleep(50); // Very brief check
+        } catch (InterruptedException e) {
+            // Ignore
+        }
+        
+        // Recheck after the brief pause
+        if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
+            Microbot.log("Player started moving/animating after brief pause, returning null");
             return null;
         }
         
@@ -809,6 +855,17 @@ public class PyramidCourse implements AgilityCourseHandler {
     public boolean handleWalkToStart(WorldPoint playerLocation) {
         // Only walk to start if on ground level
         if (playerLocation.getPlane() == 0) {
+            // Check if we should handle pyramid turn-in instead of walking to start
+            if (Rs2Inventory.isFull() && Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
+                if (!handlingPyramidTurnIn) {
+                    Microbot.log("Inventory is full with pyramid tops - going to Simon instead of pyramid start");
+                    handlingPyramidTurnIn = true;
+                }
+                // Handle turn-in instead of walking to start
+                handlePyramidTurnIn();
+                return true; // Return true to prevent other actions
+            }
+            
             int distanceToStart = playerLocation.distanceTo(START_POINT);
             if (distanceToStart > 10) {
                 Microbot.log("Walking to pyramid start point");
@@ -983,23 +1040,43 @@ public class PyramidCourse implements AgilityCourseHandler {
                     return true;
                 }
                 
-                // Gap/Plank completion (56 XP) - includes Gap Cross, Gap Jump, and Plank
-                if (totalXpGained >= 56 && totalXpGained <= 57) {
-                    // For Cross Gap obstacles, we need to wait longer
-
-                    if (isCrossGap) {
-                        // Cross Gap needs extra verification - ensure we've moved AND waited enough
+                // For Cross Gap obstacles, NEVER return true without XP
+                if (isCrossGap) {
+                    // Cross Gap MUST have XP to be considered complete
+                    if (totalXpGained < 56) {
+                        // No XP yet - keep waiting regardless of movement
+                        if (System.currentTimeMillis() - startTime < 5000) {
+                            Microbot.log("Cross Gap - still waiting for XP drop (current XP: " + totalXpGained + ")");
+                            continue;
+                        } else {
+                            // Timeout after 5 seconds without XP
+                            Microbot.log("Cross Gap timeout without XP - may need to retry");
+                            return false;
+                        }
+                    }
+                    
+                    // We have XP for Cross Gap - verify completion conditions
+                    if (totalXpGained >= 56 && totalXpGained <= 69) {
+                        // Ensure we've also moved and animation is done
                         if (distanceMoved < 3) {
                             Microbot.log("Cross Gap XP received but haven't moved far enough yet (" + distanceMoved + " tiles)");
                             continue; // Keep waiting
                         }
                         
-                        // For Cross Gap, ensure we've waited at least 3 seconds total
+                        // Ensure minimum time has passed for animation
                         if (System.currentTimeMillis() - startTime < 3000) {
                             Microbot.log("Cross Gap - waiting for full animation completion");
                             continue;
                         }
-                    } else if (distanceMoved < 3) {
+                        
+                        Microbot.log("Cross Gap completed - gained " + totalXpGained + " XP, moved " + distanceMoved + " tiles");
+                        return true;
+                    }
+                }
+                
+                // Gap/Plank completion (56 XP) for non-Cross Gap obstacles
+                if (totalXpGained >= 56 && totalXpGained <= 57) {
+                    if (distanceMoved < 3) {
                         // Other gaps still need movement check
                         Microbot.log("Gap XP received but haven't moved far enough yet (" + distanceMoved + " tiles)");
                         continue; // Keep waiting
@@ -1057,6 +1134,79 @@ public class PyramidCourse implements AgilityCourseHandler {
     @Override
     public int getLootDistance() {
         return 5; // Pyramid tops can be a bit further away
+    }
+    
+    private boolean handlePyramidTurnIn() {
+        try {
+            // Check if we still have pyramid tops
+            if (!Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
+                Microbot.log("No pyramid tops found in inventory - returning to course");
+                handlingPyramidTurnIn = false;
+                return false;
+            }
+            
+            // Try to find Simon
+            NPC simon = Rs2Npc.getNpc(SIMON_NAME);
+            
+            // If Simon is found and reachable, use pyramid top on him
+            if (simon != null && Rs2GameObject.canReach(simon.getWorldLocation())) {
+                Microbot.log("Simon found and reachable, using pyramid top");
+                
+                // Handle dialogue first if already in dialogue
+                if (Rs2Dialogue.isInDialogue()) {
+                    // Continue through dialogue
+                    if (Rs2Dialogue.hasContinue()) {
+                        Rs2Dialogue.clickContinue();
+                        Global.sleep(600, 1000);
+                        return true;
+                    }
+                    
+                    // Select option to claim reward if available
+                    if (Rs2Dialogue.hasDialogueOption("I've got some pyramid tops for you.")) {
+                        Rs2Dialogue.clickOption("I've got some pyramid tops for you.");
+                        Global.sleep(600, 1000);
+                        return true;
+                    }
+                } else {
+                    // Not in dialogue, use pyramid top on Simon
+                    boolean used = Rs2Inventory.useItemOnNpc(ItemID.PYRAMID_TOP, simon);
+                    if (used) {
+                        Microbot.log("Successfully used pyramid top on Simon");
+                        Global.sleepUntil(() -> Rs2Dialogue.isInDialogue(), 3000);
+                    } else {
+                        Microbot.log("Failed to use pyramid top on Simon");
+                    }
+                }
+                return true;
+            }
+            
+            // Simon not found or not reachable, walk to him
+            Microbot.log("Simon not found or not reachable, walking to location " + SIMON_LOCATION);
+            Rs2Walker.walkTo(SIMON_LOCATION, 2);
+            Rs2Player.waitForWalking();
+            
+            // Check if we've completed the turn-in (no pyramids left and not in dialogue)
+            if (!Rs2Inventory.contains(ItemID.PYRAMID_TOP) && !Rs2Dialogue.isInDialogue()) {
+                Microbot.log("Pyramid tops turned in successfully");
+                handlingPyramidTurnIn = false;
+                
+                // Walk back towards the pyramid start
+                WorldPoint currentPos = Rs2Player.getWorldLocation();
+                if (currentPos.distanceTo(START_POINT) > 10) {
+                    Microbot.log("Walking back to pyramid start");
+                    Rs2Walker.walkTo(START_POINT);
+                }
+                return false; // Done with turn-in, can resume obstacles
+            }
+            
+            return true;
+            
+        } catch (Exception e) {
+            Microbot.log("Error in handlePyramidTurnIn: " + e.getMessage());
+            e.printStackTrace();
+            handlingPyramidTurnIn = false;
+            return false;
+        }
     }
     
 }
