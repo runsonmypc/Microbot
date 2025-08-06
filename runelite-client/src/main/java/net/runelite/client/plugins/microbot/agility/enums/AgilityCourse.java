@@ -13,6 +13,7 @@ import net.runelite.client.plugins.microbot.agility.courses.FaladorCourse;
 import net.runelite.client.plugins.microbot.agility.courses.GnomeStrongholdCourse;
 import net.runelite.client.plugins.microbot.agility.courses.PollnivneachCourse;
 import net.runelite.client.plugins.microbot.agility.courses.PrifddinasCourse;
+import net.runelite.client.plugins.microbot.agility.courses.PyramidCourse;
 import net.runelite.client.plugins.microbot.agility.courses.RellekkaCourse;
 import net.runelite.client.plugins.microbot.agility.courses.SeersCourse;
 import net.runelite.client.plugins.microbot.agility.courses.ShayzienAdvancedCourse;
@@ -39,7 +40,8 @@ public enum AgilityCourse
 	SHAYZIEN_BASIC_COURSE("Shayzien Basic Agility Course", new ShayzienBasicCourse()),
 	SHAYZIEN_ADVANCED_COURSE("Shayzien Advanced Agility Course", new ShayzienAdvancedCourse()),
 	VARROCK_ROOFTOP_COURSE("Varrock Rooftop Course", new VarrockCourse()),
-	WEREWOLF_COURSE("Werewolf Agility Course", new WerewolfCourse())
+	WEREWOLF_COURSE("Werewolf Agility Course", new WerewolfCourse()),
+	AGILITY_PYRAMID("Agility Pyramid", new PyramidCourse())
 	;
 
 

@@ -96,13 +96,14 @@ public class AgilityScript extends Script
 					return;
 				}
 
-				if (plugin.getCourseHandler().getCurrentObstacleIndex() > 0)
+				// Always check for movement/animation before clicking obstacles
+				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
 				{
-					if (Rs2Player.isMoving() || Rs2Player.isAnimating())
-					{
-						return;
-					}
+					return;
 				}
+				
+				// Small delay after stopping to ensure animations are fully complete
+				sleep(300, 400);
 
 				if (lootMarksOfGrace())
 				{
