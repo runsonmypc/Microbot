@@ -34,7 +34,7 @@ public class PyramidCourse implements AgilityCourseHandler {
     
     // Track Cross Gap obstacles specifically
     private static long lastCrossGapTime = 0;
-    private static final long CROSS_GAP_COOLDOWN = 2500; // 2.5 seconds for Cross Gap
+    private static final long CROSS_GAP_COOLDOWN = 3500; // 3.5 seconds for Cross Gap
     
     // Define the strict obstacle sequence to prevent skipping ahead
     private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
@@ -374,7 +374,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Track Cross Gap obstacles specifically
             if (currentArea.name.contains("Cross") || currentArea.name.contains("Gap Cross")) {
                 lastCrossGapTime = System.currentTimeMillis();
-                Microbot.log("Detected Cross Gap obstacle - setting 5 second cooldown");
+                Microbot.log("Detected Cross Gap obstacle - setting 3.5 second cooldown");
             }
         } else {
             Microbot.log("ERROR: Could not find any obstacle for area: " + currentArea.name + " (ID: " + currentArea.obstacleId + ")");
@@ -888,10 +888,18 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Wait a bit after stopping to ensure animations complete
             int waitAfterStop = 400; // Default wait after stop
             
-            // Gap obstacles need slightly longer wait due to animation pauses
+            // Check if this is a Cross Gap obstacle
+            boolean isCrossGap = (startPos.getX() == 3356 && (startPos.getY() == 2835 || startPos.getY() == 2849)) ||
+                                (startPos.getX() >= 3356 && startPos.getX() <= 3360 && startPos.getY() >= 2848 && startPos.getY() <= 2850);
+            
+            // Gap obstacles need longer wait due to animation pauses
             if (totalXpGained == 0 && (startPos.distanceTo(currentPos) < 2)) {
                 // Haven't moved much and no XP yet - likely mid-animation
-                waitAfterStop = 800; // Slightly longer for gaps
+                if (isCrossGap) {
+                    waitAfterStop = 1200; // Much longer for Cross Gap
+                } else {
+                    waitAfterStop = 800; // Slightly longer for other gaps
+                }
             }
             
             if (System.currentTimeMillis() - stoppedMovingTime < waitAfterStop) {
@@ -978,9 +986,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 // Gap/Plank completion (56 XP) - includes Gap Cross, Gap Jump, and Plank
                 if (totalXpGained >= 56 && totalXpGained <= 57) {
                     // For Cross Gap obstacles, we need to wait longer
-                    boolean isCrossGap = (startPos.getX() == 3356 && (startPos.getY() == 2835 || startPos.getY() == 2849)) ||
-                                        (startPos.getX() >= 3356 && startPos.getX() <= 3360 && startPos.getY() >= 2848 && startPos.getY() <= 2850);
-                    
+
                     if (isCrossGap) {
                         // Cross Gap needs extra verification - ensure we've moved AND waited enough
                         if (distanceMoved < 3) {
@@ -988,8 +994,8 @@ public class PyramidCourse implements AgilityCourseHandler {
                             continue; // Keep waiting
                         }
                         
-                        // For Cross Gap, ensure we've waited at least 2 seconds total
-                        if (System.currentTimeMillis() - startTime < 2000) {
+                        // For Cross Gap, ensure we've waited at least 3 seconds total
+                        if (System.currentTimeMillis() - startTime < 3000) {
                             Microbot.log("Cross Gap - waiting for full animation completion");
                             continue;
                         }
