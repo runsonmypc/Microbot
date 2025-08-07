@@ -40,7 +40,11 @@ public class PyramidCourse implements AgilityCourseHandler {
     
     // Track Cross Gap obstacles specifically
     private static long lastCrossGapTime = 0;
-    private static final long CROSS_GAP_COOLDOWN = 4500; // 4.5 seconds for Cross Gap - wait for XP
+    private static final long CROSS_GAP_COOLDOWN = 6000; // 6 seconds for Cross Gap - ensure full completion
+    private static boolean currentlyDoingCrossGap = false; // Track if we're in the middle of a Cross Gap
+    
+    // Track if we're doing any XP-granting obstacle (to prevent clicks during animation pauses)
+    private static boolean currentlyDoingXpObstacle = false;
     
     // Track if we're handling pyramid turn-in
     private static boolean handlingPyramidTurnIn = false;
@@ -218,8 +222,8 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Same position after grabbing pyramid - need to jump gap
         new ObstacleArea(3042, 4697, 3043, 4698, 3, 10859, new WorldPoint(3046, 4698, 3), "Gap jump (floor 5) from pyramid spot"),
         
-        // After grabbing pyramid with climbing rocks, need to jump gap
-        new ObstacleArea(3044, 4697, 3046, 4700, 3, 10859, new WorldPoint(3046, 4698, 3), "Gap jump (floor 5)"),
+        // After grabbing pyramid with climbing rocks, need to jump gap (including position after stone block)
+        new ObstacleArea(3044, 4697, 3047, 4700, 3, 10859, new WorldPoint(3046, 4698, 3), "Gap jump (floor 5)"),
         
         // After gap jump, use doorway to exit
         new ObstacleArea(3047, 4696, 3047, 4700, 3, 10855, new WorldPoint(3044, 4695, 3), "Doorway (floor 5)"),
@@ -289,7 +293,19 @@ public class PyramidCourse implements AgilityCourseHandler {
             return null;
         }
         
-        // Special blocking for Cross Gap obstacles
+        // Special blocking for Cross Gap obstacles - don't return any obstacle while doing Cross Gap
+        if (currentlyDoingCrossGap) {
+            Microbot.log("Currently doing Cross Gap obstacle, blocking all other obstacles");
+            return null;
+        }
+        
+        // Block all obstacles while doing any XP-granting obstacle (plank, gap, ledge, etc)
+        if (currentlyDoingXpObstacle) {
+            Microbot.log("Currently doing XP-granting obstacle, blocking all other obstacles until XP received");
+            return null;
+        }
+        
+        // Additional cooldown check for Cross Gap
         if (System.currentTimeMillis() - lastCrossGapTime < CROSS_GAP_COOLDOWN) {
             Microbot.log("Cross Gap cooldown active, returning null");
             return null;
@@ -420,7 +436,24 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Track Cross Gap obstacles specifically
             if (currentArea.name.contains("Cross") || currentArea.name.contains("Gap Cross")) {
                 lastCrossGapTime = System.currentTimeMillis();
-                Microbot.log("Detected Cross Gap obstacle - setting 3.5 second cooldown");
+                currentlyDoingCrossGap = true; // Set flag that we're doing Cross Gap
+                Microbot.log("Detected Cross Gap obstacle - blocking all other obstacles until XP received");
+            }
+            
+            // Track any XP-granting obstacle (gaps, planks, ledges, low walls)
+            // These give XP: Low wall (8), Ledge (52), Gap/Plank (56.4)
+            // These don't give XP: Stairs (0), Doorway (0), Climbing rocks (0)
+            if (currentArea.obstacleId == 10865 || // Low wall
+                currentArea.obstacleId == 10860 || // Ledge
+                currentArea.obstacleId == 10868 || // Plank
+                currentArea.obstacleId == 10859 || // Gap
+                currentArea.obstacleId == 10861 || // Gap
+                currentArea.obstacleId == 10882 || // Gap
+                currentArea.obstacleId == 10884 || // Gap Cross
+                currentArea.obstacleId == 10886 || // Ledge
+                currentArea.obstacleId == 10888) { // Ledge
+                currentlyDoingXpObstacle = true;
+                Microbot.log("Starting XP-granting obstacle - blocking all clicks until XP received");
             }
         } else {
             Microbot.log("ERROR: Could not find any obstacle for area: " + currentArea.name + " (ID: " + currentArea.obstacleId + ")");
@@ -867,8 +900,8 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
             
             int distanceToStart = playerLocation.distanceTo(START_POINT);
-            if (distanceToStart > 10) {
-                Microbot.log("Walking to pyramid start point");
+            if (distanceToStart > 3) {
+                Microbot.log("Walking to pyramid start point (distance: " + distanceToStart + ")");
                 Rs2Walker.walkTo(START_POINT, 2);
                 return true;
             }
@@ -881,14 +914,17 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Mark that we've started an obstacle
         lastObstacleStartTime = System.currentTimeMillis();
         
-        // Custom wait logic for pyramid obstacles that handles stone blocks
+        // Note: The flags currentlyDoingCrossGap and currentlyDoingXpObstacle 
+        // are set by getCurrentObstacle() and should remain set during this wait
+        
+        // Simplified wait logic using XP drops as primary signal
         double initialHealth = Rs2Player.getHealthPercentage();
-        int timeoutMs = 10000; // Longer timeout for pyramid
+        int timeoutMs = 8000; // 8 second timeout
         final long startTime = System.currentTimeMillis();
         
-        // Track XP gains to differentiate stone blocks from obstacles
-        int totalXpGained = 0;
+        // Track XP gains
         int lastKnownXp = agilityExp;
+        boolean receivedXp = false;
         boolean hitByStoneBlock = false;
         
         // Track starting position
@@ -899,11 +935,8 @@ public class PyramidCourse implements AgilityCourseHandler {
             startPos.getX() >= 3042 && startPos.getX() <= 3043 &&
             startPos.getY() >= 4697 && startPos.getY() <= 4698;
         
-        // Log starting position for debugging planks
-        Microbot.log("Starting obstacle at position " + startPos + ", waiting for completion...");
-        
-        // Track when we stopped moving to add a delay
-        long stoppedMovingTime = 0;
+        Microbot.log("Starting obstacle at " + startPos + ", initial XP: " + agilityExp);
+        Microbot.log("Flags: CrossGap=" + currentlyDoingCrossGap + ", XpObstacle=" + currentlyDoingXpObstacle);
         
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
@@ -911,55 +944,22 @@ public class PyramidCourse implements AgilityCourseHandler {
             double currentHealth = Rs2Player.getHealthPercentage();
             WorldPoint currentPos = Rs2Player.getWorldLocation();
             
-            // Special check for climbing rocks pyramid collection
+            // Special case: Climbing rocks for pyramid collection (no XP)
             if (isClimbingRocksForPyramid) {
-                // Wait for animation to complete first
                 if (!Rs2Player.isMoving() && !Rs2Player.isAnimating() && System.currentTimeMillis() - startTime > 1500) {
-                    // The climbing rocks animation is done
-                    // Either we got pyramid (dialog) or "You find nothing" message
-                    // In both cases, we should move on to the gap
-                    Microbot.log("Climbing rocks action completed - moving to next obstacle");
-                    lastClimbingRocksTime = System.currentTimeMillis(); // Mark that we've clicked climbing rocks
-                    Global.sleep(600, 800);
+                    Microbot.log("Climbing rocks action completed");
+                    lastClimbingRocksTime = System.currentTimeMillis();
+                    // Clear any flags that might have been set
+                    if (currentlyDoingXpObstacle) {
+                        Microbot.log("WARNING: Clearing XP obstacle flag from climbing rocks path");
+                        currentlyDoingXpObstacle = false;
+                    }
+                    if (currentlyDoingCrossGap) {
+                        currentlyDoingCrossGap = false;
+                    }
+                    Global.sleep(300, 400);
                     return true;
                 }
-                // Keep waiting while animating
-                Global.sleep(50);
-                continue;
-            }
-            
-            // CRITICAL: Never return true while still moving or animating
-            boolean isMoving = Rs2Player.isMoving() || Rs2Player.isAnimating();
-            if (isMoving) {
-                // Keep waiting - don't process any completion logic while moving
-                stoppedMovingTime = 0; // Reset the stopped timer
-                Global.sleep(50);
-                continue;
-            }
-            
-            // We've stopped moving/animating - track when this happened
-            if (stoppedMovingTime == 0) {
-                stoppedMovingTime = System.currentTimeMillis();
-            }
-            
-            // Wait a bit after stopping to ensure animations complete
-            int waitAfterStop = 400; // Default wait after stop
-            
-            // Check if this is a Cross Gap obstacle
-            boolean isCrossGap = (startPos.getX() == 3356 && (startPos.getY() == 2835 || startPos.getY() == 2849)) ||
-                                (startPos.getX() >= 3356 && startPos.getX() <= 3360 && startPos.getY() >= 2848 && startPos.getY() <= 2850);
-            
-            // Gap obstacles need longer wait due to animation pauses
-            if (totalXpGained == 0 && (startPos.distanceTo(currentPos) < 2)) {
-                // Haven't moved much and no XP yet - likely mid-animation
-                if (isCrossGap) {
-                    waitAfterStop = 1200; // Much longer for Cross Gap
-                } else {
-                    waitAfterStop = 800; // Slightly longer for other gaps
-                }
-            }
-            
-            if (System.currentTimeMillis() - stoppedMovingTime < waitAfterStop) {
                 Global.sleep(50);
                 continue;
             }
@@ -967,158 +967,157 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Check for XP gain
             if (currentXp != lastKnownXp) {
                 int xpGained = currentXp - lastKnownXp;
-                totalXpGained += xpGained;
                 
-                // Stone blocks give exactly 12 XP
+                // Check if this is a stone block (12 XP)
                 if (xpGained == 12) {
-                    Microbot.log("Hit by stone block - will retry obstacle");
+                    Microbot.log("Hit by stone block (12 XP) - ignoring and continuing to wait");
                     hitByStoneBlock = true;
+                    lastKnownXp = currentXp;
+                    continue; // Don't count stone block as completion
                 }
                 
+                // Any other XP gain means obstacle is complete (for XP-granting obstacles)
+                Microbot.log("Received " + xpGained + " XP - obstacle complete!");
+                receivedXp = true;
                 lastKnownXp = currentXp;
+                
+                // Check if this was a Cross Gap obstacle
+                boolean wasCrossGap = currentlyDoingCrossGap;
+                
+                // For Cross Gap, ensure minimum time has passed even with XP
+                if (wasCrossGap && System.currentTimeMillis() - startTime < 3500) {
+                    long waitTime = 3500 - (System.currentTimeMillis() - startTime);
+                    Microbot.log("Cross Gap - waiting additional " + waitTime + "ms for minimum duration");
+                    Global.sleep((int)waitTime);
+                }
+                
+                // Clear flags since we received XP
+                if (currentlyDoingCrossGap) {
+                    Microbot.log("Cross Gap completed with XP - clearing flag");
+                    currentlyDoingCrossGap = false;
+                }
+                if (currentlyDoingXpObstacle) {
+                    Microbot.log("XP obstacle completed - clearing flag");
+                    currentlyDoingXpObstacle = false;
+                }
+                
+                // Add delay to ensure animation finishes
+                // Cross Gap needs longer delay even after XP
+                if (wasCrossGap) {
+                    Microbot.log("Cross Gap - waiting longer for animation to fully complete");
+                    Global.sleep(800, 1000);
+                } else {
+                    Global.sleep(200, 300);
+                }
+                return true;
             }
             
-            // Check for plane change (successful obstacle)
+            // Quick checks for other completion conditions
+            
+            // Plane change (stairs/doorway)
             if (currentPlane != plane) {
-                // Wait a bit to ensure we're completely done
-                Global.sleep(300, 400);
+                Microbot.log("Plane changed - obstacle complete");
+                Global.sleep(200, 300);
                 return true;
             }
             
-            // Check for health loss (failed obstacle)
+            // Health loss (failed obstacle)
             if (currentHealth < initialHealth) {
-                Microbot.log("Failed obstacle, lost health");
+                Microbot.log("Failed obstacle (lost health)");
+                // Clear flags if we failed
+                if (currentlyDoingCrossGap) {
+                    currentlyDoingCrossGap = false;
+                }
+                if (currentlyDoingXpObstacle) {
+                    currentlyDoingXpObstacle = false;
+                }
                 return true;
             }
             
-            // Only check completion conditions after we've stopped moving
-            // and enough time has passed to receive XP drops
+            // For non-XP obstacles (stairs, doorway), check if not moving/animating
+            // Only check after at least 1 second to allow obstacle to start
             if (System.currentTimeMillis() - startTime > 1000) {
-                int distanceMoved = currentPos.distanceTo(startPos);
-                
-                // For low wall, we expect 8 XP - wait longer if we haven't received it yet
-                if (totalXpGained == 0 && distanceMoved < 15) {
-                    // Still waiting for XP drop, continue waiting
-                    if (System.currentTimeMillis() - startTime < 4000) {
-                        continue;
-                    }
-                }
-                
-                // If we only got stone block XP (12) and stopped moving, return false to retry
-                if (hitByStoneBlock && totalXpGained == 12 && distanceMoved < 3) {
-                    Microbot.log("Stone block interrupted movement, waiting before retry");
-                    Global.sleep(1200, 1800); // Wait a bit before retrying
-                    return false; // This will cause the script to re-click the obstacle
-                }
-                
-                // Consider obstacle completed if we gained proper XP and moved
-                // Note: We already waited 600ms after stopping, so no additional delay needed
-                if (totalXpGained > 12 && distanceMoved >= 2) {
-                    return true;
-                }
-                
-                // Zero-XP obstacles (stairs, doorway) - check movement only
-                if (totalXpGained == 0 && distanceMoved >= 3) {
-                    return true;
-                }
-                
-                // Low wall (8 XP) completion
-                if (totalXpGained == 8 && distanceMoved >= 3) {
-                    Microbot.log("Low wall completed - gained 8 XP");
-                    return true;
-                }
-                
-                // Low wall + stone block (20 XP) completion
-                if (totalXpGained == 20 && distanceMoved >= 3) {
-                    Microbot.log("Low wall (with stone block) completed - gained 20 XP");
-                    return true;
-                }
-                
-                // Ledge completion (52 XP)
-                if (totalXpGained == 52) {
-                    Microbot.log("Ledge completed - gained 52 XP");
-                    return true;
-                }
-                
-                // For Cross Gap obstacles, NEVER return true without XP
-                if (isCrossGap) {
-                    // Cross Gap MUST have XP to be considered complete
-                    if (totalXpGained < 56) {
-                        // No XP yet - keep waiting regardless of movement
-                        if (System.currentTimeMillis() - startTime < 5000) {
-                            Microbot.log("Cross Gap - still waiting for XP drop (current XP: " + totalXpGained + ")");
-                            continue;
-                        } else {
-                            // Timeout after 5 seconds without XP
-                            Microbot.log("Cross Gap timeout without XP - may need to retry");
-                            return false;
+                // If we haven't received XP and are not moving/animating, check if we moved
+                if (!receivedXp && !Rs2Player.isMoving() && !Rs2Player.isAnimating()) {
+                    int distanceMoved = currentPos.distanceTo(startPos);
+                    
+                    // If we're expecting XP (flag is set), don't complete based on movement alone
+                    if (currentlyDoingXpObstacle) {
+                        // Keep waiting for XP - don't complete based on movement
+                        if (System.currentTimeMillis() - startTime < 4000) {
+                            continue; // Keep waiting for XP
+                        }
+                        // After 4 seconds without XP, check if we at least moved
+                        if (distanceMoved >= 3) {
+                            Microbot.log("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
+                            // Clear flags since something went wrong
+                            currentlyDoingCrossGap = false;
+                            currentlyDoingXpObstacle = false;
+                            return true;
                         }
                     }
                     
-                    // We have XP for Cross Gap - verify completion conditions
-                    if (totalXpGained >= 56 && totalXpGained <= 69) {
-                        // Ensure we've also moved and animation is done
-                        if (distanceMoved < 3) {
-                            Microbot.log("Cross Gap XP received but haven't moved far enough yet (" + distanceMoved + " tiles)");
-                            continue; // Keep waiting
+                    // For non-XP obstacles, movement indicates completion
+                    if (distanceMoved >= 3 && !currentlyDoingXpObstacle) {
+                        Microbot.log("Non-XP obstacle complete (moved " + distanceMoved + " tiles)");
+                        
+                        // Clear flags in case they were set
+                        if (currentlyDoingCrossGap) {
+                            Microbot.log("Clearing Cross Gap flag (movement completion)");
+                            currentlyDoingCrossGap = false;
+                        }
+                        if (currentlyDoingXpObstacle) {
+                            Microbot.log("Clearing XP obstacle flag (movement completion)");
+                            currentlyDoingXpObstacle = false;
                         }
                         
-                        // Ensure minimum time has passed for animation
-                        if (System.currentTimeMillis() - startTime < 3000) {
-                            Microbot.log("Cross Gap - waiting for full animation completion");
-                            continue;
-                        }
-                        
-                        Microbot.log("Cross Gap completed - gained " + totalXpGained + " XP, moved " + distanceMoved + " tiles");
+                        Global.sleep(300, 400);
                         return true;
                     }
-                }
-                
-                // Gap/Plank completion (56 XP) for non-Cross Gap obstacles
-                if (totalXpGained >= 56 && totalXpGained <= 57) {
-                    if (distanceMoved < 3) {
-                        // Other gaps still need movement check
-                        Microbot.log("Gap XP received but haven't moved far enough yet (" + distanceMoved + " tiles)");
-                        continue; // Keep waiting
-                    }
                     
-                    Microbot.log("Gap/Plank completed - gained " + totalXpGained + " XP, moved " + distanceMoved + " tiles");
-                    Microbot.log("  Started at " + startPos + ", ended at " + currentPos);
-                    
-                    return true;
-                }
-                
-                // Ledge/Gap with stone block (64/68 XP)
-                if (totalXpGained >= 64 && totalXpGained <= 69) {
-                    Microbot.log("Obstacle (with stone block) completed - gained " + totalXpGained + " XP");
-                    return true;
-                }
-                
-                // For gaps and other XP obstacles, ensure we wait for XP
-                if (totalXpGained == 0 && distanceMoved >= 2) {
-                    // We moved but no XP yet - keep waiting a bit more
-                    if (System.currentTimeMillis() - startTime < 3000) {
-                        continue;
+                    // If we were hit by stone block and haven't received proper XP, retry
+                    if (hitByStoneBlock && !receivedXp && System.currentTimeMillis() - startTime > 2000) {
+                        Microbot.log("Stone block interrupted obstacle, no proper XP received - retrying");
+                        // Clear flags since we're going to retry
+                        if (currentlyDoingCrossGap) {
+                            Microbot.log("Clearing Cross Gap flag for retry");
+                            currentlyDoingCrossGap = false;
+                        }
+                        if (currentlyDoingXpObstacle) {
+                            Microbot.log("Clearing XP obstacle flag for retry");
+                            currentlyDoingXpObstacle = false;
+                        }
+                        Global.sleep(800, 1200);
+                        return false; // Retry the obstacle
                     }
-                }
-                
-                // If nothing happening for too long, timeout
-                if (System.currentTimeMillis() - startTime > 4000) {
-                    Microbot.log("Timeout waiting for obstacle completion after 4 seconds");
-                    Microbot.log("  Total XP gained: " + totalXpGained + ", distance moved: " + distanceMoved);
-                    return false;
                 }
             }
             
             Global.sleep(50);
         }
         
-        // Timeout - check if we made progress
-        boolean madeProgress = totalXpGained > 12 || (totalXpGained > 0 && Rs2Player.getWorldLocation().distanceTo(startPos) >= 3);
-        if (!madeProgress) {
-            Microbot.log("No progress made, will retry");
+        // Timeout reached
+        Microbot.log("Timeout after " + timeoutMs + "ms - checking if made progress");
+        int distanceMoved = Rs2Player.getWorldLocation().distanceTo(startPos);
+        
+        // Clear flags on timeout
+        if (currentlyDoingCrossGap) {
+            Microbot.log("Clearing Cross Gap flag due to timeout");
+            currentlyDoingCrossGap = false;
         }
-        return madeProgress;
+        if (currentlyDoingXpObstacle) {
+            Microbot.log("Clearing XP obstacle flag due to timeout");
+            currentlyDoingXpObstacle = false;
+        }
+        
+        // If we received XP or moved significantly, consider it successful
+        if (receivedXp || distanceMoved >= 3) {
+            Microbot.log("Made progress despite timeout (XP: " + receivedXp + ", moved: " + distanceMoved + " tiles)");
+            return true;
+        }
+        
+        Microbot.log("No progress made - will retry");
+        return false;
     }
     
     @Override
