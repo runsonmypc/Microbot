@@ -140,6 +140,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         new ObstacleArea(3372, 2841, 3373, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) after gap - east path"),
         new ObstacleArea(3364, 2849, 3373, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) after gap - south path"),
         
+        // Additional specific positions for Ledge approach
+        new ObstacleArea(3367, 2849, 3367, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) at (3367, 2849-2850)"),
+        
         // Old positions kept for other scenarios
         new ObstacleArea(3359, 2850, 3360, 2850, 2, 10860, new WorldPoint(3364, 2841, 2), "Ledge (floor 2) after gap"),
         new ObstacleArea(3361, 2849, 3363, 2850, 2, 10860, new WorldPoint(3364, 2841, 2), "Ledge (floor 2) south approach"),
@@ -187,8 +190,11 @@ public class PyramidCourse implements AgilityCourseHandler {
         new ObstacleArea(3363, 2843, 3367, 2846, 3, 10859, new WorldPoint(3363, 2843, 3), "Gap jump 2 (floor 3)"),
         new ObstacleArea(3368, 2843, 3369, 2846, 3, 10859, new WorldPoint(3368, 2843, 3), "Gap jump 3 (floor 3)"),
         
-        // After gap jump, player on east side for plank
-        new ObstacleArea(3370, 2835, 3371, 2840, 3, 10868, new WorldPoint(3370, 2835, 3), "Plank (floor 3)"),
+        // After gap jump, player on east side for plank (expanded to include y=2841 after gap landing)
+        new ObstacleArea(3370, 2835, 3371, 2841, 3, 10868, new WorldPoint(3370, 2835, 3), "Plank (floor 3)"),
+        
+        // Additional area for gap landing position
+        new ObstacleArea(3369, 2840, 3371, 2842, 3, 10868, new WorldPoint(3370, 2835, 3), "Plank (floor 3) - gap landing"),
         
         // After plank, heading to stairs
         new ObstacleArea(3360, 2835, 3369, 2836, 3, 10857, new WorldPoint(3360, 2835, 3), "Stairs (floor 3 up)"),
@@ -1017,6 +1023,15 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Plane change (stairs/doorway)
             if (currentPlane != plane) {
                 Microbot.log("Plane changed - obstacle complete");
+                // Clear flags when plane changes
+                if (currentlyDoingCrossGap) {
+                    Microbot.log("Clearing Cross Gap flag due to plane change");
+                    currentlyDoingCrossGap = false;
+                }
+                if (currentlyDoingXpObstacle) {
+                    Microbot.log("Clearing XP obstacle flag due to plane change");
+                    currentlyDoingXpObstacle = false;
+                }
                 Global.sleep(200, 300);
                 return true;
             }
@@ -1043,6 +1058,25 @@ public class PyramidCourse implements AgilityCourseHandler {
                     
                     // If we're expecting XP (flag is set), don't complete based on movement alone
                     if (currentlyDoingXpObstacle) {
+                        // Special handling for Cross Gap - it moves >3 tiles but takes 6+ seconds
+                        if (currentlyDoingCrossGap) {
+                            // Cross Gap needs at least 6 seconds to complete
+                            if (System.currentTimeMillis() - startTime < 6000) {
+                                continue; // Keep waiting for Cross Gap
+                            }
+                            // After 6 seconds, only complete if timeout fully expires
+                            // Don't use movement check for Cross Gap as it moves >3 tiles during animation
+                            if (System.currentTimeMillis() - startTime >= timeoutMs) {
+                                Microbot.log("Cross Gap timeout after " + (System.currentTimeMillis() - startTime) + "ms - completing");
+                                currentlyDoingCrossGap = false;
+                                currentlyDoingXpObstacle = false;
+                                return true;
+                            }
+                            // Otherwise keep waiting for XP
+                            continue;
+                        }
+                        
+                        // For non-Cross-Gap XP obstacles, use normal logic
                         // Keep waiting for XP - don't complete based on movement
                         if (System.currentTimeMillis() - startTime < 4000) {
                             continue; // Keep waiting for XP
