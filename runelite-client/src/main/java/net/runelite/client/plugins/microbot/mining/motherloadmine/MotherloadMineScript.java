@@ -27,6 +27,7 @@ import net.runelite.client.plugins.microbot.util.player.Rs2PlayerModel;
 import net.runelite.client.plugins.microbot.util.tile.Rs2Tile;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Gembag;
+import net.runelite.client.plugins.microbot.util.depositbox.Rs2DepositBox;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -300,50 +301,94 @@ public class MotherloadMineScript extends Script
 
     private void bankItems()
     {
-        if (Rs2Bank.useBank())
+        if (config.useDepositBox())
         {
-            sleepUntil(Rs2Bank::isOpen);
-
-            // if using the gem sack, empty its contents directly into the bank
-            if (Rs2Gembag.hasGemBag() && !gemBagEmptiedThisCycle)
+            if (Rs2DepositBox.openDepositBox())
             {
-                Rs2Gembag.checkGemBag();
-                if (Rs2Gembag.getTotalGemCount() > 0)
+                sleepUntil(Rs2DepositBox::isOpen);
+
+                // if using the gem bag, empty its contents into inventory first (deposit box limitation)
+                if (Rs2Gembag.hasGemBag() && !gemBagEmptiedThisCycle)
                 {
-                    Rs2Inventory.interact("gem bag", "Empty");
-                    sleep(100, 300);
+                    Rs2Gembag.checkGemBag();
+                    if (Rs2Gembag.getTotalGemCount() > 0)
+                    {
+                        Rs2Inventory.interact("gem bag", "Empty");
+                        sleep(100, 300);
+                    }
+                    gemBagEmptiedThisCycle = true;
                 }
-                gemBagEmptiedThisCycle = true;
-            }
 
-            // Use deposit-all when waterwheel repair is off and we have ores (from sack)
-            // But only if we don't need to keep pickaxe in inventory
-            if (!config.repairWaterwheel() && hasOreInInventory() && !config.pickAxeInInventory())
-            {
-                Rs2Bank.depositAll();
-            }
-            else
-            {
-                Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
-            }
-            sleep(100, 300);
+                // Smart deposit logic - use depositAll when possible for better performance
+                boolean needsHammer = config.repairWaterwheel() && Rs2Inventory.hasItem("hammer");
+                boolean needsPickaxe = config.pickAxeInInventory() && Rs2Inventory.hasItem(pickaxeName);
+                boolean hasGemBag = Rs2Inventory.hasItem("gem bag");
 
-            if (config.repairWaterwheel() && !Rs2Inventory.hasItem("hammer") && !Rs2Equipment.isWearing("hammer"))
-            {
-                if (!Rs2Bank.hasItem("hammer"))
+                if (!needsHammer && !needsPickaxe && !hasGemBag)
                 {
-                    Microbot.showMessage("No hammer found in the bank.");
-                    sleep(5000);
-                    return;
+                    // Use faster deposit-all when no items need to be kept
+                    Rs2DepositBox.depositAll();
                 }
-                Rs2Bank.withdrawOne("hammer", true);
+                else
+                {
+                    // Only use depositAllExcept when we have items to keep
+                    Rs2DepositBox.depositAllExcept(
+                            needsHammer ? "hammer" : "",
+                            needsPickaxe ? pickaxeName : "",
+                            hasGemBag ? "gem bag" : ""
+                    );
+                }
+                sleep(100, 300);
+                Rs2DepositBox.closeDepositBox();
             }
-
-            if (config.pickAxeInInventory() && !Rs2Inventory.hasItem(pickaxeName))
+        }
+        else
+        {
+            if (Rs2Bank.useBank())
             {
-                Rs2Bank.withdrawOne(pickaxeName);
+                sleepUntil(Rs2Bank::isOpen);
+
+                // if using the gem sack, empty its contents directly into the bank
+                if (Rs2Gembag.hasGemBag() && !gemBagEmptiedThisCycle)
+                {
+                    Rs2Gembag.checkGemBag();
+                    if (Rs2Gembag.getTotalGemCount() > 0)
+                    {
+                        Rs2Inventory.interact("gem bag", "Empty");
+                        sleep(100, 300);
+                    }
+                    gemBagEmptiedThisCycle = true;
+                }
+
+                // Use deposit-all when waterwheel repair is off and we have ores (from sack)
+                // But only if we don't need to keep pickaxe in inventory
+                if (!config.repairWaterwheel() && hasOreInInventory() && !config.pickAxeInInventory())
+                {
+                    Rs2Bank.depositAll();
+                }
+                else
+                {
+                    Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
+                }
+                sleep(100, 300);
+
+                if (config.repairWaterwheel() && !Rs2Inventory.hasItem("hammer") && !Rs2Equipment.isWearing("hammer"))
+                {
+                    if (!Rs2Bank.hasItem("hammer"))
+                    {
+                        Microbot.showMessage("No hammer found in the bank.");
+                        sleep(5000);
+                        return;
+                    }
+                    Rs2Bank.withdrawOne("hammer", true);
+                }
+
+                if (config.pickAxeInInventory() && !Rs2Inventory.hasItem(pickaxeName))
+                {
+                    Rs2Bank.withdrawOne(pickaxeName);
+                }
+                sleep(600);
             }
-            sleep(600);
         }
         status = MLMStatus.IDLE;
     }
