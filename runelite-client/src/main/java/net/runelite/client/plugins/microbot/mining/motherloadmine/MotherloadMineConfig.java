@@ -83,4 +83,14 @@ public interface MotherloadMineConfig extends Config {
     default boolean useDepositBox() {
         return false;
     }
+
+    @ConfigItem(
+            keyName = "avoidPlayers",
+            name = "Avoid Players (Lower Floor)",
+            description = "Avoid mining veins near other players on lower floor (not needed but helps avoid attention)",
+            position = 6
+    )
+    default boolean avoidPlayers() {
+        return false;
+    }
 }

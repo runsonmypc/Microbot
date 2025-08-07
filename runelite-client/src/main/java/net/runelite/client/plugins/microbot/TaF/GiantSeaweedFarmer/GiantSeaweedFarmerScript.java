@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.TaF.GiantSeaweedFarmer;
 
+import net.runelite.api.ItemID;
 import net.runelite.api.Skill;
 import net.runelite.api.TileObject;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -11,6 +12,7 @@ import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
+import net.runelite.client.plugins.microbot.util.grounditem.Rs2GroundItem;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
@@ -135,6 +137,24 @@ public class GiantSeaweedFarmerScript extends Script {
         }
 
         return "Empty";
+    }
+    
+    private boolean checkAndLootSeaweedSpores(GiantSeaweedFarmerConfig config) {
+        // Only check if config option is enabled
+        if (!config.lootSeaweedSpores()) {
+            return false;
+        }
+        
+        // Check if seaweed spores are on the ground within 10 tiles
+        if (Rs2GroundItem.exists("seaweed spore", 10)) {
+            Microbot.log("Seaweed spore detected - looting");
+            boolean looted = Rs2GroundItem.loot("seaweed spore", 10);
+            if (looted) {
+                Rs2Inventory.waitForInventoryChanges(2000);
+            }
+            return looted;
+        }
+        return false;
     }
 
     public boolean run(GiantSeaweedFarmerConfig config) {
@@ -301,13 +321,13 @@ public class GiantSeaweedFarmerScript extends Script {
             return;
         }
 
-        var handledPatch = handlePatch(patchToFarm);
+        var handledPatch = handlePatch(patchToFarm, config);
         if (handledPatch) {
             handledPatches.add(patchToFarm);
         }
     }
 
-    private boolean handlePatch(int patchId) {
+    private boolean handlePatch(int patchId, GiantSeaweedFarmerConfig config) {
         if (Rs2Inventory.isFull()) {
             Rs2NpcModel leprechaun = Rs2Npc.getNpc("Tool leprechaun");
             if (leprechaun != null) {
@@ -318,6 +338,9 @@ public class GiantSeaweedFarmerScript extends Script {
             }
             return false;
         }
+        
+        // Check for seaweed spores on ground and loot them if enabled
+        checkAndLootSeaweedSpores(config);
 
         Integer[] ids = {
                 patchId

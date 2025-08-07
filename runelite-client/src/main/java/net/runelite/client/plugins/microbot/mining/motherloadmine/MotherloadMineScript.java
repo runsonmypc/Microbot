@@ -483,7 +483,8 @@ public class MotherloadMineScript extends Script
 
         WorldPoint location = wallObject.getWorldLocation();
 
-        if (!config.mineUpstairs())
+        // Check for nearby players if avoidPlayers is enabled (only on lower floor)
+        if (!config.mineUpstairs() && config.avoidPlayers())
         {
             Stream<Rs2PlayerModel> players = Rs2Player.getPlayers(it -> it != null && it.getWorldLocation().distanceTo(wallObject.getWorldLocation()) <= 2);
             if (players.findAny().isPresent()) return false;
