@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot.woodcutting;
 
 import net.runelite.api.AnimationID;
 import net.runelite.api.GameObject;
+import net.runelite.api.ObjectComposition;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -40,13 +41,15 @@ enum State {
 
 public class AutoWoodcuttingScript extends Script {
 
-    public static String version = "1.6.5";
+    public static String version = "1.6.6";
     public volatile boolean cannotLightFire = false;
 	private boolean hasAutoHopMessageShown = false;
 
     State state = State.WOODCUTTING;
     private static WorldPoint returnPoint;
     private static final Integer[] FIRE_IDS = {26185, 49927};
+    // Planted teak tree IDs (found at farming patches)
+    private static final int[] PLANTED_TEAK_TREE_IDS = {30480, 30481, 30482};
     public static final List<Integer> BURNING_ANIMATION_IDS = List.of(
             FORESTRY_CAMPFIRE_BURNING_LOGS,
             FORESTRY_CAMPFIRE_BURNING_MAGIC_LOGS,
@@ -125,7 +128,46 @@ public class AutoWoodcuttingScript extends Script {
                             return;
                         }
 
-                        GameObject tree = Rs2GameObject.findReachableObject(config.TREE().getName(), true, config.distanceToStray(), getInitialPlayerLocation(), config.TREE().equals(WoodcuttingTree.REDWOOD),config.TREE().getAction());
+                        GameObject tree = null;
+                        
+                        // Special handling for teak trees - also check for planted teak trees
+                        if (config.TREE().equals(WoodcuttingTree.TEAK_TREE)) {
+                            // First try to find regular teak trees
+                            tree = Rs2GameObject.findReachableObject(config.TREE().getName(), true, config.distanceToStray(), getInitialPlayerLocation(), false, config.TREE().getAction());
+                            
+                            if (tree == null) {
+                                // If no regular teak tree found, look for planted teak trees
+                                List<GameObject> allObjects = Rs2GameObject.getGameObjects(config.distanceToStray());
+                                
+                                // Find planted teak trees by checking against all known planted teak IDs
+                                List<GameObject> plantedTeaks = allObjects.stream()
+                                    .filter(o -> {
+                                        for (int id : PLANTED_TEAK_TREE_IDS) {
+                                            if (o.getId() == id) return true;
+                                        }
+                                        return false;
+                                    })
+                                    .collect(Collectors.toList());
+                                
+                                // Check each planted teak for reachability and proper action
+                                for (GameObject teak : plantedTeaks) {
+                                    boolean reachable = Rs2GameObject.isReachable(teak);
+                                    int distance = teak.getWorldLocation().distanceTo(getInitialPlayerLocation());
+                                    
+                                    // Check if the tree has the "Chop down" action (not a stump)
+                                    ObjectComposition comp = Rs2GameObject.convertToObjectComposition(teak);
+                                    boolean hasChopAction = Rs2GameObject.hasAction(comp, config.TREE().getAction(), true);
+                                    
+                                    if (reachable && distance <= config.distanceToStray() && hasChopAction) {
+                                        tree = teak;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Normal tree finding for all other tree types
+                            tree = Rs2GameObject.findReachableObject(config.TREE().getName(), true, config.distanceToStray(), getInitialPlayerLocation(), config.TREE().equals(WoodcuttingTree.REDWOOD), config.TREE().getAction());
+                        }
 
                         if (tree != null) {
                             if (Rs2GameObject.interact(tree, config.TREE().getAction())) {
