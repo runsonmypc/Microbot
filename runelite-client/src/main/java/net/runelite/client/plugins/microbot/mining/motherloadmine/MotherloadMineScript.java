@@ -240,9 +240,9 @@ public class MotherloadMineScript extends Script
             if (Rs2Inventory.count() <= 2)
             {
                 Rs2GameObject.interact(SACK_ID);
-                sleepUntil(this::hasOreInInventory);
+                sleepUntil(this::hasOreOrGemInInventory);
             }
-            if (hasOreInInventory())
+            if (hasOreOrGemInInventory())
             {
                 bankItems();
             }
@@ -255,6 +255,16 @@ public class MotherloadMineScript extends Script
 
     private boolean hasOreInInventory()
     {
+        // Check for actual ores only (no gems) - used during mining phase
+        return Rs2Inventory.contains(
+                ItemID.RUNITE_ORE, ItemID.ADAMANTITE_ORE, ItemID.MITHRIL_ORE,
+                ItemID.GOLD_ORE, ItemID.COAL
+        );
+    }
+    
+    private boolean hasOreOrGemInInventory()
+    {
+        // Check for both ores and gems - used when emptying sack
         return Rs2Inventory.contains(
                 ItemID.RUNITE_ORE, ItemID.ADAMANTITE_ORE, ItemID.MITHRIL_ORE,
                 ItemID.GOLD_ORE, ItemID.COAL, ItemID.UNCUT_SAPPHIRE,
@@ -312,6 +322,9 @@ public class MotherloadMineScript extends Script
 
     private void bankItems()
     {
+        // Ensure we're on the lower floor before attempting to bank
+        ensureLowerFloor();
+        
         if (config.useDepositBox())
         {
             if (Rs2DepositBox.openDepositBox())
@@ -371,9 +384,9 @@ public class MotherloadMineScript extends Script
                     gemBagEmptiedThisCycle = true;
                 }
 
-                // Use deposit-all when waterwheel repair is off and we have ores (from sack)
+                // Use deposit-all when waterwheel repair is off and we have ores/gems (from sack)
                 // But only if we don't need to keep pickaxe in inventory
-                if (!config.repairWaterwheel() && hasOreInInventory() && pickaxeName == null)
+                if (!config.repairWaterwheel() && hasOreOrGemInInventory() && pickaxeName == null)
                 {
                     Rs2Bank.depositAll();
                 }
