@@ -81,11 +81,18 @@ public class MotherloadMineScript extends Script
         status = MLMStatus.IDLE;
         shouldEmptySack = false;
 
-        if (config.pickAxeInInventory())
+        // Automatically detect if pickaxe is in inventory
+        pickaxeName = Optional.ofNullable(Rs2Inventory.get("pickaxe"))
+                .map(Rs2ItemModel::getName)
+                .orElse(null);
+        
+        if (pickaxeName != null)
         {
-            pickaxeName = Optional.ofNullable(Rs2Inventory.get("pickaxe"))
-                    .map(Rs2ItemModel::getName)
-                    .orElse(null);
+            Microbot.log("Pickaxe detected in inventory: " + pickaxeName);
+        }
+        else
+        {
+            Microbot.log("No pickaxe in inventory - assuming it's equipped");
         }
     }
 
@@ -97,12 +104,7 @@ public class MotherloadMineScript extends Script
             return;
         }
 
-        if (config.pickAxeInInventory() && pickaxeName.isEmpty())
-        {
-            Microbot.showMessage("Pickaxe not found in your inventory");
-            shutdown();
-            return;
-        }
+        // No longer need to check - we automatically detect pickaxe
 
         if (Rs2AntibanSettings.actionCooldownActive) return;
         if (Rs2Player.isAnimating() || Microbot.getClient().getLocalPlayer().isInteracting()) return;
@@ -198,7 +200,8 @@ public class MotherloadMineScript extends Script
     private boolean hasRequiredTools()
     {
         boolean hasHammer = !config.repairWaterwheel() || Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer");
-        boolean hasPickaxe = !config.pickAxeInInventory() || (pickaxeName != null && Rs2Inventory.hasItem(pickaxeName));
+        // If pickaxe was detected in inventory at startup, ensure it's still there
+        boolean hasPickaxe = pickaxeName == null || Rs2Inventory.hasItem(pickaxeName);
         return hasHammer && hasPickaxe;
     }
 
@@ -329,7 +332,7 @@ public class MotherloadMineScript extends Script
 
                 // Smart deposit logic - use depositAll when possible for better performance
                 boolean needsHammer = config.repairWaterwheel() && Rs2Inventory.hasItem("hammer");
-                boolean needsPickaxe = config.pickAxeInInventory() && pickaxeName != null && Rs2Inventory.hasItem(pickaxeName);
+                boolean needsPickaxe = pickaxeName != null && Rs2Inventory.hasItem(pickaxeName);
                 boolean hasGemBag = Rs2Inventory.hasItem("gem bag");
 
                 if (!needsHammer && !needsPickaxe && !hasGemBag)
@@ -370,7 +373,7 @@ public class MotherloadMineScript extends Script
 
                 // Use deposit-all when waterwheel repair is off and we have ores (from sack)
                 // But only if we don't need to keep pickaxe in inventory
-                if (!config.repairWaterwheel() && hasOreInInventory() && !config.pickAxeInInventory())
+                if (!config.repairWaterwheel() && hasOreInInventory() && pickaxeName == null)
                 {
                     Rs2Bank.depositAll();
                 }
@@ -393,10 +396,6 @@ public class MotherloadMineScript extends Script
                     Rs2Bank.withdrawOne("hammer", true);
                 }
 
-                if (config.pickAxeInInventory() && !Rs2Inventory.hasItem(pickaxeName))
-                {
-                    Rs2Bank.withdrawOne(pickaxeName);
-                }
                 sleep(600);
             }
         }
