@@ -61,7 +61,7 @@ public class MotherloadMineScript extends Script
     private int maxSackSize;
     private MotherloadMineConfig config;
 
-    private String pickaxeName = "";
+    private String pickaxeName = null;
     private boolean shouldEmptySack = false;
     private boolean gemBagEmptiedThisCycle = false;
 
@@ -85,7 +85,7 @@ public class MotherloadMineScript extends Script
         {
             pickaxeName = Optional.ofNullable(Rs2Inventory.get("pickaxe"))
                     .map(Rs2ItemModel::getName)
-                    .orElse("");
+                    .orElse(null);
         }
     }
 
@@ -198,7 +198,7 @@ public class MotherloadMineScript extends Script
     private boolean hasRequiredTools()
     {
         boolean hasHammer = !config.repairWaterwheel() || Rs2Inventory.hasItem("hammer") || Rs2Equipment.isWearing("hammer");
-        boolean hasPickaxe = !config.pickAxeInInventory() || Rs2Inventory.hasItem(pickaxeName);
+        boolean hasPickaxe = !config.pickAxeInInventory() || (pickaxeName != null && Rs2Inventory.hasItem(pickaxeName));
         return hasHammer && hasPickaxe;
     }
 
@@ -232,7 +232,7 @@ public class MotherloadMineScript extends Script
     {
         ensureLowerFloor();
 
-        while (Microbot.getVarbitValue(Varbits.SACK_NUMBER) > 0)
+        while (Microbot.getVarbitValue(Varbits.SACK_NUMBER) > 0 && isRunning())
         {
             if (Rs2Inventory.count() <= 2)
             {
@@ -329,7 +329,7 @@ public class MotherloadMineScript extends Script
 
                 // Smart deposit logic - use depositAll when possible for better performance
                 boolean needsHammer = config.repairWaterwheel() && Rs2Inventory.hasItem("hammer");
-                boolean needsPickaxe = config.pickAxeInInventory() && Rs2Inventory.hasItem(pickaxeName);
+                boolean needsPickaxe = config.pickAxeInInventory() && pickaxeName != null && Rs2Inventory.hasItem(pickaxeName);
                 boolean hasGemBag = Rs2Inventory.hasItem("gem bag");
 
                 if (!needsHammer && !needsPickaxe && !hasGemBag)
@@ -341,9 +341,9 @@ public class MotherloadMineScript extends Script
                 {
                     // Only use depositAllExcept when we have items to keep
                     Rs2DepositBox.depositAllExcept(
-                            needsHammer ? "hammer" : "",
-                            needsPickaxe ? pickaxeName : "",
-                            hasGemBag ? "gem bag" : ""
+                            needsHammer ? "hammer" : null,
+                            needsPickaxe ? pickaxeName : null,
+                            hasGemBag ? "gem bag" : null
                     );
                 }
                 sleep(100, 300);
@@ -376,7 +376,9 @@ public class MotherloadMineScript extends Script
                 }
                 else
                 {
-                    Rs2Bank.depositAllExcept(config.repairWaterwheel() ? "hammer" : "", pickaxeName, "gem bag");
+                    // Build list of items to keep, filtering out nulls and empty strings
+                    String hammer = config.repairWaterwheel() ? "hammer" : null;
+                    Rs2Bank.depositAllExcept(hammer, pickaxeName, "gem bag");
                 }
                 sleep(100, 300);
 
