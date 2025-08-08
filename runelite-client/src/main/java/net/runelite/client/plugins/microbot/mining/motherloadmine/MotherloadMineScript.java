@@ -150,6 +150,14 @@ public class MotherloadMineScript extends Script
             return;
         }
 
+        // Check if we have ores that need to be deposited before mining
+        if (hasOreInInventory())
+        {
+            resetMiningState();
+            status = MLMStatus.BANKING;
+            return;
+        }
+
         int sackCount = Microbot.getVarbitValue(Varbits.SACK_NUMBER);
 
         if (sackCount > maxSackSize || (shouldEmptySack && !Rs2Inventory.contains("pay-dirt")))
