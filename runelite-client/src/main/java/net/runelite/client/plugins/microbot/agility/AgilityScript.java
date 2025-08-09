@@ -111,6 +111,8 @@ public class AgilityScript extends Script
 					// If we gained XP and not Colossal Wyrm, obstacle is complete
 					if (!isColossalWyrm && currentAgilityXp > lastAgilityXp) {
 						lastAgilityXp = currentAgilityXp;
+						// Small humanization delay after XP drop (100-300ms)
+						sleep(100, 300);
 					} else if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
 						// Still moving, update timestamp and generate new random wait delay
 						lastMovingTime = System.currentTimeMillis();
