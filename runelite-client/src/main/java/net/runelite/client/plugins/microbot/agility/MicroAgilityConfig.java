@@ -77,4 +77,16 @@ public interface MicroAgilityConfig extends Config
 	{
 		return "";
 	}
+
+	@ConfigItem(
+		keyName = "efficientAlching",
+		name = "Efficient Alching",
+		description = "Click obstacle first, then alch, then click again (for obstacles 5+ tiles away)",
+		position = 6,
+		section = generalSection
+	)
+	default boolean efficientAlching()
+	{
+		return false;
+	}
 }
