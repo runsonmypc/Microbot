@@ -186,8 +186,12 @@ public class AgilityScript extends Script
 
 				// Handle alchemy if enabled
 				if (config.alchemy()) {
-					Optional<String> alchItem = getAlchItem();
-					if (alchItem.isPresent()) {
+					// Check if we should skip alching based on configured chance
+					if (Math.random() * 100 < config.alchSkipChance()) {
+						// Skip alching this obstacle
+					} else {
+						Optional<String> alchItem = getAlchItem();
+						if (alchItem.isPresent()) {
 						// Check for efficient alching conditions
 						if (config.efficientAlching() && 
 							gameObject.getWorldLocation().distanceTo(playerWorldLocation) >= 5) {
@@ -231,6 +235,7 @@ public class AgilityScript extends Script
 								Rs2Magic.alch(alchItem.get(), 50, 75);
 							}
 						}
+					}
 					}
 				}
 				
