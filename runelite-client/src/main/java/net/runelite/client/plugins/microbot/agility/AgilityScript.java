@@ -40,6 +40,7 @@ public class AgilityScript extends Script
 	WorldPoint startPoint = null;
 	int lastAgilityXp = 0;
 	long lastMovingTime = 0;
+	int waitDelay = 0;  // Random delay between 700-1100ms
 
 	@Inject
 	public AgilityScript(MicroAgilityPlugin plugin, MicroAgilityConfig config)
@@ -104,15 +105,19 @@ public class AgilityScript extends Script
 				// Check if we're still completing an obstacle
 				if (plugin.getCourseHandler().getCurrentObstacleIndex() > 0)
 				{
-					// If we gained XP, obstacle is complete
-					if (currentAgilityXp > lastAgilityXp) {
+					// Disable XP checks for Colossal Wyrm courses (they have multi-XP drop obstacles)
+					boolean isColossalWyrm = config.agilityCourse().name().contains("COLOSSAL_WYRM");
+					
+					// If we gained XP and not Colossal Wyrm, obstacle is complete
+					if (!isColossalWyrm && currentAgilityXp > lastAgilityXp) {
 						lastAgilityXp = currentAgilityXp;
 					} else if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-						// Still moving, update timestamp and wait
+						// Still moving, update timestamp and generate new random wait delay
 						lastMovingTime = System.currentTimeMillis();
+						waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
 						return;
-					} else if (System.currentTimeMillis() - lastMovingTime < 1000) {
-						// Not moving but haven't waited 1 second yet
+					} else if (System.currentTimeMillis() - lastMovingTime < waitDelay) {
+						// Not moving but haven't waited long enough yet
 						return;
 					}
 				}
@@ -201,19 +206,23 @@ public class AgilityScript extends Script
 						} else {
 							// Normal alching - but skip if at first obstacle and still mid-obstacle
 							if (plugin.getCourseHandler().getCurrentObstacleIndex() == 0) {
-								// Skip if we haven't gained XP AND (still moving OR haven't waited 1 second)
-								if (currentAgilityXp == lastAgilityXp) {
+								// Disable XP checks for Colossal Wyrm courses
+								boolean isColossalWyrm = config.agilityCourse().name().contains("COLOSSAL_WYRM");
+								
+								// Skip if we haven't gained XP (unless Colossal Wyrm) AND (still moving OR haven't waited long enough)
+								if (isColossalWyrm || currentAgilityXp == lastAgilityXp) {
 									if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
 										lastMovingTime = System.currentTimeMillis();
+										waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
 										// Skip alching, we're mid-obstacle
-									} else if (System.currentTimeMillis() - lastMovingTime < 1000) {
+									} else if (System.currentTimeMillis() - lastMovingTime < waitDelay) {
 										// Skip alching, still waiting
 									} else {
 										// Waited long enough, alch
 										Rs2Magic.alch(alchItem.get(), 50, 75);
 									}
 								} else {
-									// Gained XP, safe to alch
+									// Gained XP (and not Colossal Wyrm), safe to alch
 									Rs2Magic.alch(alchItem.get(), 50, 75);
 								}
 							} else {
