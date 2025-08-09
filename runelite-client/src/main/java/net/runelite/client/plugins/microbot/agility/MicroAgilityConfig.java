@@ -89,4 +89,16 @@ public interface MicroAgilityConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "alchSkipChance",
+		name = "Alch Skip Chance",
+		description = "Percentage chance to skip alching on any obstacle (0-100)",
+		position = 7,
+		section = generalSection
+	)
+	default int alchSkipChance()
+	{
+		return 5;
+	}
 }
