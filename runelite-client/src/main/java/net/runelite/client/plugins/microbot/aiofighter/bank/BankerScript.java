@@ -63,6 +63,7 @@ public class BankerScript extends Script {
                         Microbot.log("Banking handled successfully.");
                     }
                 } else if (!needBanking() &&
+                        config.toggleCombat() &&  // Only walk back if auto-attack is enabled
                         config.centerLocation().distanceTo(Rs2Player.getWorldLocation()) > config.attackRadius() &&
                         !config.centerLocation().equals(new WorldPoint(0, 0, 0))) {
 

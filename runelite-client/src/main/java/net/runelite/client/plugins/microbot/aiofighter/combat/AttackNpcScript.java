@@ -169,7 +169,8 @@ public class AttackNpcScript extends Script {
                             noNpcCount = 0;
                             SlayerScript.reset();
                         }
-                    } else {
+                    } else if (config.toggleCombat()) {
+                        // Only walk back to center if auto-attack is enabled
                         Rs2Walker.walkTo(config.centerLocation(),0);
                          AIOFighterPlugin.setState(State.WALKING);
                     }
