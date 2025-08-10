@@ -61,7 +61,8 @@ public class TheMessScript extends Script {
         this.overlay = overlay;
         this.config = config;
 
-        setCurrentState(State.WAITING);
+        // Start with GETTING_READY to ensure clean inventory on startup
+        setCurrentState(State.GETTING_READY);
         setOrderOfStates();
 
         Rs2Antiban.setActivity(Activity.GENERAL_COOKING);
@@ -236,6 +237,7 @@ public class TheMessScript extends Script {
 
                 Set<Integer> itemsToDrop = Set.of(
                         ItemID.BOWL_EMPTY,
+                        ItemID.BOWL_WATER,  // Added bowl of water
                         ItemID.KNIFE,
                         ItemID.HOSIDIUS_SERVERY_PIEDISH,
                         ItemID.BURNT_PIZZA,
@@ -261,18 +263,25 @@ public class TheMessScript extends Script {
                         ItemID.HOSIDIUS_SERVERY_MEATWATER
                 );
 
-                int droppedItemsCount = (int) Rs2Inventory.items()
-                        .filter(item -> itemsToDrop.contains(item.getId()))
-                        .peek(item -> {
-                            Rs2Inventory.drop(item.getId());
-                            sleepGaussian(120, 40);
-                        })
-                        .count();
-
-                if (droppedItemsCount > 0) {
-                    debug("Dropped " + droppedItemsCount + " items from inventory.");
+                // Check if there are items to drop
+                boolean hasItemsToDrop = Rs2Inventory.items()
+                        .anyMatch(item -> itemsToDrop.contains(item.getId()));
+                
+                if (hasItemsToDrop) {
+                    debug("Dropping unwanted items from inventory.");
+                    // Use dropAll for efficient dropping
+                    Rs2Inventory.dropAll(item -> itemsToDrop.contains(item.getId()));
                     Rs2Antiban.actionCooldown();
-                    return false;
+                    
+                    // Check if there are still items to drop after the drop attempt
+                    boolean stillHasItemsToDrop = Rs2Inventory.items()
+                            .anyMatch(item -> itemsToDrop.contains(item.getId()));
+                    
+                    if (stillHasItemsToDrop) {
+                        debug("Still have items to drop, will retry.");
+                        return false;  // Keep trying to drop
+                    }
+                    debug("All droppable items removed from inventory.");
                 }
                 info("Walking to the bank to deposit items...");
                 return Rs2Bank.bankItemsAndWalkBackToOriginalPosition(
@@ -470,31 +479,59 @@ public class TheMessScript extends Script {
                 return () -> false;
         }
         return () -> {
+            // First verify we actually have both required items
+            if (!Rs2Inventory.hasItem(item1) || !Rs2Inventory.hasItem(item2)) {
+                debug("Missing required items for combination.");
+                return true; // Items gone, task complete
+            }
+            
             if (Rs2Inventory.hasItem(item1) && Rs2Inventory.hasItem(item2)) {
-                boolean alreadyInRightSlots = (Rs2Inventory.slotContains(26, item1) && Rs2Inventory.slotContains(27, item2)) ||
-                        (Rs2Inventory.slotContains(26, item2) && Rs2Inventory.slotContains(27, item1));
+                // Check if items are already in the exact positions we want
+                // item1 should be in slot 26, item2 should be in slot 27
+                boolean alreadyInRightSlots = Rs2Inventory.slotContains(26, item1) && Rs2Inventory.slotContains(27, item2);
 
                 if (!alreadyInRightSlots) {
                     Rs2ItemModel lastOfItem1 = Rs2Inventory.getLast(item1);
                     Rs2ItemModel lastOfItem2 = Rs2Inventory.getLast(item2);
 
-                    if (lastOfItem1 != null && lastOfItem2 != null) {
-                        if (lastOfItem1.getSlot() != 26 && lastOfItem1.getSlot() != 27) {
-                            if (lastOfItem2.getSlot() == 26) {
-                                Rs2Inventory.moveItemToSlot(lastOfItem1, 27);
-                            } else if (lastOfItem2.getSlot() == 27) {
-                                Rs2Inventory.moveItemToSlot(lastOfItem1, 26);
-                            } else {
-                                Rs2Inventory.moveItemToSlot(lastOfItem1, 26);
-                                sleepUntil(() -> Rs2Inventory.waitForInventoryChanges(2000));
-                                Rs2Inventory.moveItemToSlot(lastOfItem2, 27);
-                                sleepUntil(() -> Rs2Inventory.waitForInventoryChanges(2000));
-                            }
-                        }
-                    } else {
+                    if (lastOfItem1 == null || lastOfItem2 == null) {
                         debug("Failed to find items in inventory, cannot combine.");
                         return false;
                     }
+                    
+                    // Simple approach: always move both items to their target slots
+                    // Move item1 to slot 26 if it's not already there
+                    if (lastOfItem1.getSlot() != 26) {
+                        Rs2Inventory.moveItemToSlot(lastOfItem1, 26);
+                        sleepUntil(() -> Rs2Inventory.waitForInventoryChanges(1000));
+                    }
+                    
+                    // Re-get item2 in case positions changed
+                    lastOfItem2 = Rs2Inventory.getLast(item2);
+                    if (lastOfItem2 != null && lastOfItem2.getSlot() != 27) {
+                        Rs2Inventory.moveItemToSlot(lastOfItem2, 27);
+                        sleepUntil(() -> Rs2Inventory.waitForInventoryChanges(1000));
+                    }
+                }
+
+                // Get the actual items in slots 26 and 27
+                Rs2ItemModel slot26Item = Rs2Inventory.getItemInSlot(26);
+                Rs2ItemModel slot27Item = Rs2Inventory.getItemInSlot(27);
+                
+                // Check if slots are empty
+                if (slot26Item == null || slot27Item == null) {
+                    debug("One or both slots are empty, retrying.");
+                    return false;
+                }
+                
+                // Verify we have item1 in slot 26 and item2 in slot 27 (exact order)
+                boolean correctCombination = 
+                    (slot26Item.getId() == item1 && slot27Item.getId() == item2);
+                    
+                if (!correctCombination) {
+                    debug("Wrong items in slots 26/27. Have: " + slot26Item.getId() + " and " + slot27Item.getId() + 
+                          ", Need: " + item1 + " and " + item2);
+                    return false;
                 }
 
                 Widget item1Widget = Rs2Inventory.getInventoryWidget().getChild(26);
@@ -509,7 +546,11 @@ public class TheMessScript extends Script {
                     Rs2Antiban.actionCooldown();
                     return true;
                 } else if (getCurrentState() == State.CUT_PINEAPPLE) {
-                    while (Rs2Inventory.hasItem(ItemID.HOSIDIUS_SERVERY_PINEAPPLE) || !isRunning()) {
+                    while (Rs2Inventory.hasItem(ItemID.HOSIDIUS_SERVERY_PINEAPPLE) && isRunning()) {
+                        if (!Rs2Inventory.hasItem(ItemID.KNIFE)) {
+                            debug("Knife not found, cannot cut pineapple.");
+                            break;
+                        }
                         Rs2Widget.clickWidget(item1Widget);
                         sleepGaussian(120, 40);
                         Rs2Widget.clickWidget(item2Widget);
@@ -520,7 +561,24 @@ public class TheMessScript extends Script {
                     sleepUntil(() -> Rs2Inventory.waitForInventoryChanges(2000));
                     return true;
                 } else {
-                    while (Rs2Inventory.hasItem(item1) || !isRunning()) {
+                    while (Rs2Inventory.hasItem(item1) && Rs2Inventory.hasItem(item2) && isRunning()) {
+                        // Re-verify the exact items are still in the correct slots
+                        Rs2ItemModel currentSlot26 = Rs2Inventory.getItemInSlot(26);
+                        Rs2ItemModel currentSlot27 = Rs2Inventory.getItemInSlot(27);
+                        
+                        if (currentSlot26 == null || currentSlot27 == null) {
+                            debug("Slots became empty during combination, stopping.");
+                            return false;
+                        }
+                        
+                        boolean stillCorrect = 
+                            (currentSlot26.getId() == item1 && currentSlot27.getId() == item2);
+                            
+                        if (!stillCorrect) {
+                            debug("Wrong items detected during combination, stopping.");
+                            return false;
+                        }
+                        
                         Rs2Widget.clickWidget(item1Widget);
                         sleepGaussian(120, 40);
                         Rs2Widget.clickWidget(item2Widget);
