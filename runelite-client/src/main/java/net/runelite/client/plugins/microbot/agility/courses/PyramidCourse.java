@@ -299,6 +299,11 @@ public class PyramidCourse implements AgilityCourseHandler {
             return null;
         }
         
+        // Check for empty waterskins and drop them
+        if (handleEmptyWaterskins()) {
+            return null; // Return null to prevent obstacle interaction this cycle
+        }
+        
         // Special blocking for Cross Gap obstacles - don't return any obstacle while doing Cross Gap
         if (currentlyDoingCrossGap) {
             Microbot.log("Currently doing Cross Gap obstacle, blocking all other obstacles");
@@ -1251,6 +1256,20 @@ public class PyramidCourse implements AgilityCourseHandler {
             handlingPyramidTurnIn = false;
             return false;
         }
+    }
+    
+    /**
+     * Checks for empty waterskins in inventory and drops them
+     * @return true if waterskins were dropped, false otherwise
+     */
+    private boolean handleEmptyWaterskins() {
+        if (Rs2Inventory.contains(ItemID.WATERSKIN0)) {
+            Microbot.log("Found empty waterskin(s), dropping them");
+            Rs2Inventory.drop(ItemID.WATERSKIN0);
+            Global.sleep(300, 500);
+            return true;
+        }
+        return false;
     }
     
 }
