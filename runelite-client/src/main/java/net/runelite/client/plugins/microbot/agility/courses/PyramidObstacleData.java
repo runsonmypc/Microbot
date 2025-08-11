@@ -65,9 +65,9 @@ public class PyramidObstacleData {
         area(3367, 2849, 3367, 2850, 2, 10860, 3372, 2839, "Ledge (floor 2) at (3367, 2849-2850)"),
         area(3359, 2850, 3360, 2850, 2, 10860, 3364, 2841, "Ledge (floor 2) after gap"),
         area(3361, 2849, 3363, 2850, 2, 10860, 3364, 2841, "Ledge (floor 2) south approach"),
-        area(3372, 2835, 3373, 2839, 2, 10860, 3364, 2841, "Ledge (floor 2) from wrong position"),
         // Low wall areas
         area(3370, 2834, 3373, 2840, 2, 10865, 3370, 2833, "Low wall (floor 2) after ledge"),
+        area(3372, 2835, 3373, 2839, 2, 10860, 3364, 2841, "Ledge (floor 2) from wrong position"),
         area(3364, 2841, 3373, 2851, 2, 10865, 3370, 2833, "Low wall (floor 2)"),
         area(3364, 2851, 3365, 2851, 2, 10865, 3370, 2833, "Low wall (floor 2) from ledge"),
         area(3364, 2849, 3365, 2850, 2, 10865, 3370, 2833, "Low wall (floor 2) approach"),

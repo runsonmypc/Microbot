@@ -55,7 +55,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         10865, // Low wall
         10859, // Gap jump (end)
         10857  // Stairs up
-    )
+    );
     
     // Obstacle areas are now defined in PyramidObstacleData for better maintainability
     private static final List<ObstacleArea> OBSTACLE_AREAS = PyramidObstacleData.OBSTACLE_AREAS;
@@ -133,13 +133,13 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Block all obstacles while doing any XP-granting obstacle (plank, gap, ledge, etc)
-        if (currentlyDoingXpObstacle) {
+        if (state.isDoingXpObstacle()) {
             debugLog("Currently doing XP-granting obstacle, blocking all other obstacles until XP received");
             return null;
         }
         
         // Additional cooldown check for Cross Gap
-        if (System.currentTimeMillis() - lastCrossGapTime < CROSS_GAP_COOLDOWN) {
+        if (state.isCrossGapCooldownActive()) {
             debugLog("Cross Gap cooldown active, returning null");
             return null;
         }
@@ -158,7 +158,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Prevent getting obstacles too quickly after starting one
-        if (System.currentTimeMillis() - lastObstacleStartTime < OBSTACLE_COOLDOWN) {
+        if (state.isObstacleCooldownActive()) {
             debugLog("Obstacle cooldown active, returning null to prevent spam clicking");
             return null;
         }
@@ -182,7 +182,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             if (area.containsPlayer(playerPos)) {
                 // Special check for climbing rocks - skip if we've recently clicked them
                 if (area.obstacleId == 10851 && area.name.contains("grab pyramid")) {
-                    if (System.currentTimeMillis() - lastClimbingRocksTime < CLIMBING_ROCKS_COOLDOWN) {
+                    if (state.isClimbingRocksCooldownActive()) {
                         debugLog("Recently clicked climbing rocks, skipping to next area");
                         continue;
                     }
@@ -268,7 +268,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             // Track Cross Gap obstacles specifically
             if (currentArea.name.contains("Cross") || currentArea.name.contains("Gap Cross")) {
-                lastCrossGapTime = System.currentTimeMillis();
+                // Cross gap time is tracked in startCrossGap
                 state.startCrossGap(); // Set flag that we're doing Cross Gap
                 debugLog("Detected Cross Gap obstacle - blocking all other obstacles until XP received");
             }
@@ -285,7 +285,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 currentArea.obstacleId == 10884 || // Gap Cross
                 currentArea.obstacleId == 10886 || // Ledge
                 currentArea.obstacleId == 10888) { // Ledge
-                currentlyDoingXpObstacle = true;
+                state.startXpObstacle();
                 debugLog("Starting XP-granting obstacle - blocking all clicks until XP received");
             }
         } else {
@@ -723,9 +723,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         if (playerLocation.getPlane() == 0) {
             // Check if we should handle pyramid turn-in instead of walking to start
             if (Rs2Inventory.isFull() && Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
-                if (!handlingPyramidTurnIn) {
+                if (!state.isHandlingPyramidTurnIn()) {
                     debugLog("Inventory is full with pyramid tops - going to Simon instead of pyramid start");
-                    handlingPyramidTurnIn = true;
+                    state.startPyramidTurnIn();
                 }
                 // Handle turn-in instead of walking to start
                 handlePyramidTurnIn();
@@ -756,9 +756,9 @@ public class PyramidCourse implements AgilityCourseHandler {
     @Override
     public boolean waitForCompletion(int agilityExp, int plane) {
         // Mark that we've started an obstacle
-        lastObstacleStartTime = System.currentTimeMillis();
+        state.recordObstacleStart();
         
-        // Note: The flags state.isDoingCrossGap() and currentlyDoingXpObstacle 
+        // Note: The flags state.isDoingCrossGap() and state.isDoingXpObstacle() 
         // are set by getCurrentObstacle() and should remain set during this wait
         
         // Simplified wait logic using XP drops as primary signal
@@ -780,7 +780,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             startPos.getY() >= 4697 && startPos.getY() <= 4698;
         
         debugLog("Starting obstacle at " + startPos + ", initial XP: " + agilityExp);
-        debugLog("Flags: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + currentlyDoingXpObstacle);
+        debugLog("Flags: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + state.isDoingXpObstacle());
         
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
@@ -792,11 +792,11 @@ public class PyramidCourse implements AgilityCourseHandler {
             if (isClimbingRocksForPyramid) {
                 if (!Rs2Player.isMoving() && !Rs2Player.isAnimating() && System.currentTimeMillis() - startTime > 1500) {
                     debugLog("Climbing rocks action completed");
-                    lastClimbingRocksTime = System.currentTimeMillis();
+                    state.recordClimbingRocks();
                     // Clear any flags that might have been set
-                    if (currentlyDoingXpObstacle) {
+                    if (state.isDoingXpObstacle()) {
                         debugLog("WARNING: Clearing XP obstacle flag from climbing rocks path");
-                        currentlyDoingXpObstacle = false;
+                        state.clearXpObstacle();
                     }
                     if (state.isDoingCrossGap()) {
                         state.clearCrossGap();
@@ -840,9 +840,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                     debugLog("Cross Gap completed with XP - clearing flag");
                     state.clearCrossGap();
                 }
-                if (currentlyDoingXpObstacle) {
+                if (state.isDoingXpObstacle()) {
                     debugLog("XP obstacle completed - clearing flag");
-                    currentlyDoingXpObstacle = false;
+                    state.clearXpObstacle();
                 }
                 
                 // Add delay to ensure animation finishes
@@ -866,9 +866,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                     debugLog("Clearing Cross Gap flag due to plane change");
                     state.clearCrossGap();
                 }
-                if (currentlyDoingXpObstacle) {
+                if (state.isDoingXpObstacle()) {
                     debugLog("Clearing XP obstacle flag due to plane change");
-                    currentlyDoingXpObstacle = false;
+                    state.clearXpObstacle();
                 }
                 Global.sleep(200, 300);
                 return true;
@@ -881,8 +881,8 @@ public class PyramidCourse implements AgilityCourseHandler {
                 if (state.isDoingCrossGap()) {
                     state.clearCrossGap();
                 }
-                if (currentlyDoingXpObstacle) {
-                    currentlyDoingXpObstacle = false;
+                if (state.isDoingXpObstacle()) {
+                    state.clearXpObstacle();
                 }
                 return true;
             }
@@ -895,7 +895,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                     int distanceMoved = currentPos.distanceTo(startPos);
                     
                     // If we're expecting XP (flag is set), don't complete based on movement alone
-                    if (currentlyDoingXpObstacle) {
+                    if (state.isDoingXpObstacle()) {
                         // Special handling for Cross Gap - it moves >3 tiles but takes 6+ seconds
                         if (state.isDoingCrossGap()) {
                             // Cross Gap needs at least 6 seconds to complete
@@ -907,7 +907,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                             if (System.currentTimeMillis() - startTime >= timeoutMs) {
                                 debugLog("Cross Gap timeout after " + (System.currentTimeMillis() - startTime) + "ms - completing");
                                 state.clearCrossGap();
-                                currentlyDoingXpObstacle = false;
+                                state.clearXpObstacle();
                                 return true;
                             }
                             // Otherwise keep waiting for XP
@@ -924,13 +924,13 @@ public class PyramidCourse implements AgilityCourseHandler {
                             debugLog("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
                             // Clear flags since something went wrong
                             state.clearCrossGap();
-                            currentlyDoingXpObstacle = false;
+                            state.clearXpObstacle();
                             return true;
                         }
                     }
                     
                     // For non-XP obstacles, movement indicates completion
-                    if (distanceMoved >= 3 && !currentlyDoingXpObstacle) {
+                    if (distanceMoved >= 3 && !state.isDoingXpObstacle()) {
                         debugLog("Non-XP obstacle complete (moved " + distanceMoved + " tiles)");
                         
                         // Clear flags in case they were set
@@ -938,9 +938,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                             debugLog("Clearing Cross Gap flag (movement completion)");
                             state.clearCrossGap();
                         }
-                        if (currentlyDoingXpObstacle) {
+                        if (state.isDoingXpObstacle()) {
                             debugLog("Clearing XP obstacle flag (movement completion)");
-                            currentlyDoingXpObstacle = false;
+                            state.clearXpObstacle();
                         }
                         
                         Global.sleep(300, 400);
@@ -955,9 +955,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                             debugLog("Clearing Cross Gap flag for retry");
                             state.clearCrossGap();
                         }
-                        if (currentlyDoingXpObstacle) {
+                        if (state.isDoingXpObstacle()) {
                             debugLog("Clearing XP obstacle flag for retry");
-                            currentlyDoingXpObstacle = false;
+                            state.clearXpObstacle();
                         }
                         Global.sleep(800, 1200);
                         return false; // Retry the obstacle
@@ -977,9 +977,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             debugLog("Clearing Cross Gap flag due to timeout");
             state.clearCrossGap();
         }
-        if (currentlyDoingXpObstacle) {
+        if (state.isDoingXpObstacle()) {
             debugLog("Clearing XP obstacle flag due to timeout");
-            currentlyDoingXpObstacle = false;
+            state.clearXpObstacle();
         }
         
         // If we received XP or moved significantly, consider it successful
