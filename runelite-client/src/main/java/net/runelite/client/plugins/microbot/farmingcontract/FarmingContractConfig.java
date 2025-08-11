@@ -26,17 +26,6 @@ public interface FarmingContractConfig extends Config {
         return true;  // Changed to true by default - makes more sense
     }
     
-    @ConfigItem(
-        keyName = "stopIfNoSeeds",
-        name = "Stop When No Seeds Available",
-        description = "Stop the plugin when no seeds are available (after downgrade attempts if enabled). If false, waits for you to get seeds",
-        position = 2,
-        section = contractSection
-    )
-    default boolean stopIfNoSeeds() {
-        return true;
-    }
-    
     @ConfigSection(
         name = "Farming Settings",
         description = "Farming preferences",

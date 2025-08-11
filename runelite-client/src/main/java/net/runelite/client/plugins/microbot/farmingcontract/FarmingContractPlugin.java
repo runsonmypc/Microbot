@@ -8,9 +8,11 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingWorld;
 
 import javax.inject.Inject;
 import java.awt.*;
+import net.runelite.client.plugins.microbot.Microbot;
 
 @PluginDescriptor(
     name = "<html><font color=\"#32C8CD\">[ ▢ ]</font> Farming Contract</html>",
@@ -29,6 +31,12 @@ public class FarmingContractPlugin extends Plugin {
     
     @Inject
     private FarmingContractOverlay overlay;
+    
+    @Inject
+    private FarmingWorld farmingWorld;
+    
+    @Inject
+    private ConfigManager configManager;
     
     private FarmingContractScript script;
     
@@ -49,7 +57,7 @@ public class FarmingContractPlugin extends Plugin {
             overlayManager.add(overlay);
         }
         
-        script = new FarmingContractScript(this, config);
+        script = new FarmingContractScript(this, config, farmingWorld, configManager);
         script.run();
     }
     
@@ -67,5 +75,14 @@ public class FarmingContractPlugin extends Plugin {
         }
         
         status = "Stopped";
+    }
+    
+    /**
+     * Called by the script when it completes or needs to stop.
+     * This will toggle the plugin off in the RuneLite menu.
+     */
+    public void stopPlugin() {
+        log.info("Script requested plugin stop - toggling off in menu");
+        Microbot.stopPlugin(this);
     }
 }
