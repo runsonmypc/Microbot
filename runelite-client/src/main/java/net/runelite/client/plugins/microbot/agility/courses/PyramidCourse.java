@@ -907,6 +907,17 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             int distanceToStart = playerLocation.distanceTo(START_POINT);
             if (distanceToStart > 3) {
+                // Try to directly click on the pyramid stairs if visible
+                TileObject pyramidStairs = Rs2GameObject.findObjectByIdAndDistance(10857, 10);
+                if (pyramidStairs != null && pyramidStairs.getWorldLocation().distanceTo(START_POINT) <= 2) {
+                    Microbot.log("Clicking directly on pyramid stairs (distance: " + distanceToStart + ")");
+                    if (Rs2GameObject.interact(pyramidStairs)) {
+                        Global.sleep(600, 800); // Small delay after clicking
+                        return true;
+                    }
+                }
+                
+                // Fall back to walking if stairs not found or interaction failed
                 Microbot.log("Walking to pyramid start point (distance: " + distanceToStart + ")");
                 Rs2Walker.walkTo(START_POINT, 2);
                 return true;
