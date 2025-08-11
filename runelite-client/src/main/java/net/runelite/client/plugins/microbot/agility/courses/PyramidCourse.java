@@ -17,6 +17,7 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.client.plugins.microbot.agility.courses.PyramidObstacleData.ObstacleArea;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,29 +26,25 @@ import java.util.stream.Collectors;
 
 public class PyramidCourse implements AgilityCourseHandler {
     
+    // Debug mode - set to true for verbose logging during development
+    private static final boolean DEBUG = false;
+    
     private static final WorldPoint START_POINT = new WorldPoint(3354, 2830, 0);
     private static final WorldPoint SIMON_LOCATION = new WorldPoint(3343, 2827, 0);
     private static final String SIMON_NAME = "Simon Templeton";
     private static final int PYRAMID_TOP_REGION = 12105;
     
-    // Track when we started an obstacle to prevent clicking during traversal
-    private static long lastObstacleStartTime = 0;
-    private static final long OBSTACLE_COOLDOWN = 1500; // 1.5 seconds minimum between obstacles
+    // Centralized state tracking
+    private static final PyramidState state = new PyramidState();
     
-    // Track if we've already clicked climbing rocks this session
-    private static long lastClimbingRocksTime = 0;
-    private static final long CLIMBING_ROCKS_COOLDOWN = 30000; // 30 seconds - pyramid respawn time
-    
-    // Track Cross Gap obstacles specifically
-    private static long lastCrossGapTime = 0;
-    private static final long CROSS_GAP_COOLDOWN = 6000; // 6 seconds for Cross Gap - ensure full completion
-    private static boolean currentlyDoingCrossGap = false; // Track if we're in the middle of a Cross Gap
-    
-    // Track if we're doing any XP-granting obstacle (to prevent clicks during animation pauses)
-    private static boolean currentlyDoingXpObstacle = false;
-    
-    // Track if we're handling pyramid turn-in
-    private static boolean handlingPyramidTurnIn = false;
+    /**
+     * Debug logging - only prints if DEBUG mode is enabled
+     */
+    private static void debugLog(String message) {
+        if (DEBUG) {
+            Microbot.log(message);
+        }
+    }
     
     // Define the strict obstacle sequence to prevent skipping ahead
     private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
@@ -58,185 +55,10 @@ public class PyramidCourse implements AgilityCourseHandler {
         10865, // Low wall
         10859, // Gap jump (end)
         10857  // Stairs up
-    );
+    )
     
-    
-    // Pyramid obstacle definitions based on player position
-    private static class ObstacleArea {
-        final int minX, minY, maxX, maxY, plane;
-        final int obstacleId;
-        final WorldPoint obstacleLocation;
-        final String name;
-        
-        ObstacleArea(int minX, int minY, int maxX, int maxY, int plane, int obstacleId, WorldPoint obstacleLocation, String name) {
-            this.minX = minX;
-            this.minY = minY;
-            this.maxX = maxX;
-            this.maxY = maxY;
-            this.plane = plane;
-            this.obstacleId = obstacleId;
-            this.obstacleLocation = obstacleLocation;
-            this.name = name;
-        }
-        
-        boolean containsPlayer(WorldPoint playerPos) {
-            return playerPos.getPlane() == plane &&
-                   playerPos.getX() >= minX && playerPos.getX() <= maxX &&
-                   playerPos.getY() >= minY && playerPos.getY() <= maxY;
-        }
-    }
-    
-    // Define precise obstacle areas based on logged player positions
-    private static final List<ObstacleArea> OBSTACLE_AREAS = Arrays.asList(
-        // Floor 0 -> 1
-        new ObstacleArea(3354, 2830, 3354, 2830, 0, 10857, new WorldPoint(3354, 2831, 0), "Stairs (up)"),
-        
-        // Floor 1 - Clockwise path (precise positions from logs)
-        // After stairs, player can land at (3354-3355, 2833)
-        new ObstacleArea(3354, 2833, 3355, 2833, 1, 10865, new WorldPoint(3354, 2849, 1), "Low wall"),
-        
-        // Low wall has intermediate positions as player walks north
-        new ObstacleArea(3354, 2834, 3354, 2848, 1, 10865, new WorldPoint(3354, 2849, 1), "Low wall"),
-        
-        // After low wall, player lands at (3354, 2850) or (3355, 2850)
-        new ObstacleArea(3354, 2850, 3355, 2850, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
-        
-        // Full area for approaching and traversing the ledge (includes area from (3354, 2851) to (3363, 2852))
-        new ObstacleArea(3354, 2851, 3363, 2852, 1, 10860, new WorldPoint(3364, 2851, 1), "Ledge (east)"),
-        
-        // After ledge, approaching plank from north
-        new ObstacleArea(3364, 2850, 3375, 2852, 1, 10868, new WorldPoint(3368, 2845, 1), "Plank (approach)"),
-        
-        // East side approach to plank (if player went around)
-        new ObstacleArea(3374, 2845, 3375, 2849, 1, 10868, new WorldPoint(3368, 2845, 1), "Plank (east)"),
-        
-        // After crossing plank, player is south/west of it
-        new ObstacleArea(3368, 2834, 3375, 2844, 1, 10882, new WorldPoint(3371, 2831, 1), "Gap (floor 1)"),
-        
-        // After gap, player at (3371-3372, 2832)
-        new ObstacleArea(3371, 2832, 3372, 2832, 1, 10886, new WorldPoint(3362, 2831, 1), "Ledge 3"),
-        
-        // Moving west along ledge 3
-        new ObstacleArea(3362, 2832, 3370, 2832, 1, 10886, new WorldPoint(3362, 2831, 1), "Ledge 3"),
-        
-        // After ledge 3, player at (3361-3362, 2832)
-        new ObstacleArea(3361, 2832, 3362, 2832, 1, 10857, new WorldPoint(3356, 2831, 1), "Stairs (floor 1 up)"),
-        
-        // Approaching stairs from west
-        new ObstacleArea(3356, 2831, 3360, 2833, 1, 10857, new WorldPoint(3356, 2831, 1), "Stairs (floor 1 up)"),
-        
-        // Floor 2 - Three gaps in sequence
-        // After stairs from floor 1, player at (3356-3357, 2835)
-        new ObstacleArea(3356, 2835, 3357, 2837, 2, 10884, new WorldPoint(3356, 2835, 2), "Gap Cross 1 (floor 2)"),
-        
-        // After first gap cross, player at ~(3356-3357, 2838-2840)
-        new ObstacleArea(3356, 2838, 3357, 2847, 2, 10859, new WorldPoint(3356, 2841, 2), "Gap Jump (floor 2)"),
-        
-        // After gap jump, player continues north to third gap
-        new ObstacleArea(3356, 2848, 3360, 2850, 2, 10861, new WorldPoint(3356, 2849, 2), "Gap Cross 2 (floor 2)"),
-        
-        // After Gap 10861, player needs to go to Ledge 10860
-        // Large area from north side to east side where player travels after Gap 10861
-        new ObstacleArea(3372, 2841, 3373, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) after gap - east path"),
-        new ObstacleArea(3364, 2849, 3373, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) after gap - south path"),
-        
-        // Additional specific positions for Ledge approach
-        new ObstacleArea(3367, 2849, 3367, 2850, 2, 10860, new WorldPoint(3372, 2839, 2), "Ledge (floor 2) at (3367, 2849-2850)"),
-        
-        // Old positions kept for other scenarios
-        new ObstacleArea(3359, 2850, 3360, 2850, 2, 10860, new WorldPoint(3364, 2841, 2), "Ledge (floor 2) after gap"),
-        new ObstacleArea(3361, 2849, 3363, 2850, 2, 10860, new WorldPoint(3364, 2841, 2), "Ledge (floor 2) south approach"),
-        
-        // After crossing the ledge - player lands near the ledge on east side
-        new ObstacleArea(3370, 2834, 3373, 2840, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2) after ledge"),
-        
-        // Player at (3372, 2836) after crossing wrong east ledge - redirect to correct path
-        new ObstacleArea(3372, 2835, 3373, 2839, 2, 10860, new WorldPoint(3364, 2841, 2), "Ledge (floor 2) from wrong position"),
-        
-        // At or near the actual ledge obstacle (which is at 3364,2841 size 10x11)
-        new ObstacleArea(3364, 2841, 3373, 2851, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2)"),
-        
-        // After crossing ledge, player ends at (3364, 2851) or nearby
-        new ObstacleArea(3364, 2851, 3365, 2851, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2) from ledge"),
-        
-        // After ledge completion and walking south, player approaches low wall
-        new ObstacleArea(3364, 2849, 3365, 2850, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2) approach"),
-        
-        // Walking east toward low wall
-        new ObstacleArea(3366, 2849, 3373, 2851, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2) east"),
-        
-        // After low wall at (3369-3370, 2834)
-        new ObstacleArea(3369, 2834, 3370, 2834, 2, 10859, new WorldPoint(3365, 2833, 2), "Gap jump (floor 2 end)"),
-        
-        // After gap jump at (3363-3365, 2834)
-        new ObstacleArea(3363, 2834, 3365, 2834, 2, 10857, new WorldPoint(3358, 2833, 2), "Stairs (floor 2 up)"),
-        
-        // Approaching stairs
-        new ObstacleArea(3358, 2833, 3362, 2834, 2, 10857, new WorldPoint(3358, 2833, 2), "Stairs (floor 2 up)"),
-        
-        // Floor 3 - Clockwise path (precise positions from ObstacleData)
-        // After stairs from floor 2, player at (3358, 2837)
-        new ObstacleArea(3358, 2837, 3359, 2838, 3, 10865, new WorldPoint(3358, 2837, 3), "Low wall (floor 3)"),
-        
-        // After low wall, player at (3358, 2840)
-        new ObstacleArea(3358, 2840, 3359, 2842, 3, 10888, new WorldPoint(3358, 2840, 3), "Ledge 2"),
-        
-        // After Ledge 10888, large area before Gap jumps on floor 3
-        new ObstacleArea(3358, 2847, 3371, 2848, 3, 10859, new WorldPoint(3358, 2843, 3), "Gap jump area (floor 3) after ledge"),
-        new ObstacleArea(3370, 2843, 3371, 2848, 3, 10859, new WorldPoint(3358, 2843, 3), "Gap jump area (floor 3) east"),
-        
-        // Original gap areas for other positions
-        new ObstacleArea(3358, 2843, 3362, 2846, 3, 10859, new WorldPoint(3358, 2843, 3), "Gap jump 1 (floor 3)"),
-        new ObstacleArea(3363, 2843, 3367, 2846, 3, 10859, new WorldPoint(3363, 2843, 3), "Gap jump 2 (floor 3)"),
-        new ObstacleArea(3368, 2843, 3369, 2846, 3, 10859, new WorldPoint(3368, 2843, 3), "Gap jump 3 (floor 3)"),
-        
-        // After gap jump, player on east side for plank (expanded to include y=2841 after gap landing)
-        new ObstacleArea(3370, 2835, 3371, 2841, 3, 10868, new WorldPoint(3370, 2835, 3), "Plank (floor 3)"),
-        
-        // Additional area for gap landing position
-        new ObstacleArea(3369, 2840, 3371, 2842, 3, 10868, new WorldPoint(3370, 2835, 3), "Plank (floor 3) - gap landing"),
-        
-        // After plank, heading to stairs
-        new ObstacleArea(3360, 2835, 3369, 2836, 3, 10857, new WorldPoint(3360, 2835, 3), "Stairs (floor 3 up)"),
-        
-        // Floor 4 (uses special coordinate system, plane=2)
-        // After stairs from floor 3, player arrives at (3041, 4695) - define exact 2x2 area
-        new ObstacleArea(3040, 4695, 3041, 4696, 2, 10859, new WorldPoint(3040, 4697, 2), "Gap jump (floor 4 start)"),
-        new ObstacleArea(3042, 4695, 3042, 4697, 2, 10859, new WorldPoint(3040, 4695, 2), "Gap jump (floor 4 start alt)"),
-        
-        // After first gap jump - wider area
-        new ObstacleArea(3040, 4698, 3042, 4702, 2, 10865, new WorldPoint(3040, 4699, 2), "Low wall (floor 4)"),
-        new ObstacleArea(3041, 4697, 3042, 4697, 2, 10865, new WorldPoint(3040, 4699, 2), "Low wall (floor 4 alt)"),
-        
-        // After low wall, player lands at (3043, 4701-4702) - need second gap
-        new ObstacleArea(3043, 4701, 3043, 4702, 2, 10859, new WorldPoint(3048, 4695, 2), "Gap jump (floor 4 second)"),
-        
-        // Larger area for second gap
-        new ObstacleArea(3043, 4695, 3049, 4700, 2, 10859, new WorldPoint(3048, 4695, 2), "Gap jump (floor 4 mid)"),
-        
-        // After gap jump, low wall on east side
-        new ObstacleArea(3047, 4693, 3049, 4696, 2, 10865, new WorldPoint(3047, 4693, 2), "Low wall (floor 4 end)"),
-        new ObstacleArea(3048, 4695, 3049, 4696, 2, 10865, new WorldPoint(3047, 4693, 2), "Low wall (floor 4 end alt)"),
-        
-        // After low wall, stairs to go up - expanded area
-        new ObstacleArea(3042, 4693, 3047, 4695, 2, 10857, new WorldPoint(3042, 4693, 2), "Stairs (floor 4 up)"),
-        
-        // Floor 5 (pyramid top, plane=3)
-        // After stairs from floor 4, player at (3042, 4697) - this is where we grab pyramid
-        new ObstacleArea(3042, 4697, 3043, 4698, 3, 10851, new WorldPoint(3042, 4697, 3), "Climbing rocks (grab pyramid)"),
-        
-        // Same position after grabbing pyramid - need to jump gap
-        new ObstacleArea(3042, 4697, 3043, 4698, 3, 10859, new WorldPoint(3046, 4698, 3), "Gap jump (floor 5) from pyramid spot"),
-        
-        // After grabbing pyramid with climbing rocks, need to jump gap (including position after stone block)
-        new ObstacleArea(3044, 4697, 3047, 4700, 3, 10859, new WorldPoint(3046, 4698, 3), "Gap jump (floor 5)"),
-        
-        // After gap jump, use doorway to exit
-        new ObstacleArea(3047, 4696, 3047, 4700, 3, 10855, new WorldPoint(3044, 4695, 3), "Doorway (floor 5)"),
-        
-        // Additional area for after gap but before doorway
-        new ObstacleArea(3044, 4695, 3046, 4696, 3, 10855, new WorldPoint(3044, 4695, 3), "Doorway (floor 5 approach)")
-    );
+    // Obstacle areas are now defined in PyramidObstacleData for better maintainability
+    private static final List<ObstacleArea> OBSTACLE_AREAS = PyramidObstacleData.OBSTACLE_AREAS;
     
     @Override
     public WorldPoint getStartPoint() {
@@ -267,15 +89,15 @@ public class PyramidCourse implements AgilityCourseHandler {
     public TileObject getCurrentObstacle() {
         WorldPoint playerPos = Rs2Player.getWorldLocation();
         
-        Microbot.log("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
+        debugLog("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
         
         // Check if inventory is full AND we're on ground level (not inside pyramid)
         if (Rs2Inventory.isFull() && playerPos.getPlane() == 0) {
             if (Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
                 // Inventory is full and has pyramid tops - handle turn-in
-                if (!handlingPyramidTurnIn) {
-                    Microbot.log("Inventory is full with pyramid tops and on ground level - going to Simon Templeton");
-                    handlingPyramidTurnIn = true;
+                if (!state.isHandlingPyramidTurnIn()) {
+                    debugLog("Inventory is full with pyramid tops and on ground level - going to Simon Templeton");
+                    state.startPyramidTurnIn();
                 }
                 
                 // Handle pyramid turn-in
@@ -290,12 +112,12 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
         } else if (!Rs2Inventory.isFull()) {
             // Reset turn-in flag when inventory is not full
-            handlingPyramidTurnIn = false;
+            state.clearPyramidTurnIn();
         }
         
         // NEVER return an obstacle while moving or animating
         if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-            Microbot.log("Player is moving/animating, returning null to prevent clicking");
+            debugLog("Player is moving/animating, returning null to prevent clicking");
             return null;
         }
         
@@ -305,20 +127,20 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Special blocking for Cross Gap obstacles - don't return any obstacle while doing Cross Gap
-        if (currentlyDoingCrossGap) {
-            Microbot.log("Currently doing Cross Gap obstacle, blocking all other obstacles");
+        if (state.isDoingCrossGap()) {
+            debugLog("Currently doing Cross Gap obstacle, blocking all other obstacles");
             return null;
         }
         
         // Block all obstacles while doing any XP-granting obstacle (plank, gap, ledge, etc)
         if (currentlyDoingXpObstacle) {
-            Microbot.log("Currently doing XP-granting obstacle, blocking all other obstacles until XP received");
+            debugLog("Currently doing XP-granting obstacle, blocking all other obstacles until XP received");
             return null;
         }
         
         // Additional cooldown check for Cross Gap
         if (System.currentTimeMillis() - lastCrossGapTime < CROSS_GAP_COOLDOWN) {
-            Microbot.log("Cross Gap cooldown active, returning null");
+            debugLog("Cross Gap cooldown active, returning null");
             return null;
         }
         
@@ -331,13 +153,13 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         // Recheck after the brief pause
         if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-            Microbot.log("Player started moving/animating after brief pause, returning null");
+            debugLog("Player started moving/animating after brief pause, returning null");
             return null;
         }
         
         // Prevent getting obstacles too quickly after starting one
         if (System.currentTimeMillis() - lastObstacleStartTime < OBSTACLE_COOLDOWN) {
-            Microbot.log("Obstacle cooldown active, returning null to prevent spam clicking");
+            debugLog("Obstacle cooldown active, returning null to prevent spam clicking");
             return null;
         }
         
@@ -345,13 +167,13 @@ public class PyramidCourse implements AgilityCourseHandler {
         ObstacleArea currentArea = null;
         
         // Debug: log areas being checked for current plane
-        Microbot.log("Checking areas for plane " + playerPos.getPlane() + " player position " + playerPos + ":");
+        debugLog("Checking areas for plane " + playerPos.getPlane() + " player position " + playerPos + ":");
         for (ObstacleArea area : OBSTACLE_AREAS) {
             if (area.plane == playerPos.getPlane()) {
                 boolean contains = area.containsPlayer(playerPos);
-                Microbot.log("  - Area: " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ") - contains player: " + contains);
+                debugLog("  - Area: " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ") - contains player: " + contains);
                 if (contains) {
-                    Microbot.log("    -> Obstacle ID: " + area.obstacleId + " at location: " + area.obstacleLocation);
+                    debugLog("    -> Obstacle ID: " + area.obstacleId + " at location: " + area.obstacleLocation);
                 }
             }
         }
@@ -361,44 +183,44 @@ public class PyramidCourse implements AgilityCourseHandler {
                 // Special check for climbing rocks - skip if we've recently clicked them
                 if (area.obstacleId == 10851 && area.name.contains("grab pyramid")) {
                     if (System.currentTimeMillis() - lastClimbingRocksTime < CLIMBING_ROCKS_COOLDOWN) {
-                        Microbot.log("Recently clicked climbing rocks, skipping to next area");
+                        debugLog("Recently clicked climbing rocks, skipping to next area");
                         continue;
                     }
                 }
                 
                 currentArea = area;
-                Microbot.log("Found player in area: " + area.name + " (obstacle ID: " + area.obstacleId + ")");
+                debugLog("Found player in area: " + area.name + " (obstacle ID: " + area.obstacleId + ")");
                 // Debug: log if this is a plank area
                 if (area.obstacleId == 10868) {
-                    Microbot.log("  Player in PLANK area - should look for plank end ground object");
+                    debugLog("  Player in PLANK area - should look for plank end ground object");
                 }
                 break;
             }
         }
         
         if (currentArea == null) {
-            Microbot.log("Player not in any defined obstacle area at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
+            debugLog("Player not in any defined obstacle area at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
             
             // Special check for floor 4 start position
             if (playerPos.getPlane() == 2 && playerPos.getX() == 3041 && playerPos.getY() == 4695) {
-                Microbot.log("SPECIAL CASE: Player at floor 4 start position (3041, 4695)");
+                debugLog("SPECIAL CASE: Player at floor 4 start position (3041, 4695)");
                 // Manually find the gap
                 TileObject gap = findNearestObstacleWithinDistance(playerPos, 10859, 5);
                 if (gap != null) {
-                    Microbot.log("Found Gap manually at " + gap.getWorldLocation());
+                    debugLog("Found Gap manually at " + gap.getWorldLocation());
                     return gap;
                 }
             }
             
             // Log all areas on current plane for debugging
-            Microbot.log("Available areas on plane " + playerPos.getPlane() + ":");
+            debugLog("Available areas on plane " + playerPos.getPlane() + ":");
             int count = 0;
             for (ObstacleArea area : OBSTACLE_AREAS) {
                 if (area.plane == playerPos.getPlane()) {
-                    Microbot.log("  - " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ")");
+                    debugLog("  - " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ")");
                     count++;
                     if (count > 10) {
-                        Microbot.log("  ... and more areas");
+                        debugLog("  ... and more areas");
                         break;
                     }
                 }
@@ -406,7 +228,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             // Special case: If player just climbed to floor 1, direct them to low wall
             if (playerPos.getPlane() == 1 && playerPos.getX() >= 3354 && playerPos.getX() <= 3355 && playerPos.getY() == 2833) {
-                Microbot.log("Player just arrived on floor 1, looking for low wall");
+                debugLog("Player just arrived on floor 1, looking for low wall");
                 // Find the low wall obstacle
                 TileObject lowWall = findNearestObstacle(playerPos, 10865);
                 if (lowWall != null) {
@@ -415,11 +237,11 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
             
             // Try to find the nearest obstacle on the current plane
-            Microbot.log("Looking for nearest pyramid obstacle...");
+            debugLog("Looking for nearest pyramid obstacle...");
             return findNearestPyramidObstacle(playerPos);
         }
         
-        Microbot.log("Player in area for: " + currentArea.name + " at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
+        debugLog("Player in area for: " + currentArea.name + " at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
         
         // Find the specific obstacle instance
         TileObject obstacle = null;
@@ -427,7 +249,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         // For gaps and ledges, always find the nearest one since there can be multiple
         // Also for floor 4, always use nearest search since obstacles can be multi-tile
         if (currentArea.obstacleId == 10859 || currentArea.obstacleId == 10861 || currentArea.obstacleId == 10884 || currentArea.obstacleId == 10860 || playerPos.getPlane() == 2) {
-            Microbot.log("Looking for nearest " + currentArea.name);
+            debugLog("Looking for nearest " + currentArea.name);
             
             // Use strict sequential checking to prevent skipping ahead
             obstacle = findNearestObstacleStrict(playerPos, currentArea.obstacleId, currentArea);
@@ -435,20 +257,20 @@ public class PyramidCourse implements AgilityCourseHandler {
             obstacle = findObstacleAt(currentArea.obstacleLocation, currentArea.obstacleId);
             
             if (obstacle == null) {
-                Microbot.log("Could not find " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at expected location " + currentArea.obstacleLocation);
+                debugLog("Could not find " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at expected location " + currentArea.obstacleLocation);
                 // Try to find any instance of this obstacle type nearby with strict checking
                 obstacle = findNearestObstacleStrict(playerPos, currentArea.obstacleId, currentArea);
             }
         }
         
         if (obstacle != null) {
-            Microbot.log("Selected obstacle: " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at " + obstacle.getWorldLocation() + " for player at " + playerPos);
+            debugLog("Selected obstacle: " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at " + obstacle.getWorldLocation() + " for player at " + playerPos);
             
             // Track Cross Gap obstacles specifically
             if (currentArea.name.contains("Cross") || currentArea.name.contains("Gap Cross")) {
                 lastCrossGapTime = System.currentTimeMillis();
-                currentlyDoingCrossGap = true; // Set flag that we're doing Cross Gap
-                Microbot.log("Detected Cross Gap obstacle - blocking all other obstacles until XP received");
+                state.startCrossGap(); // Set flag that we're doing Cross Gap
+                debugLog("Detected Cross Gap obstacle - blocking all other obstacles until XP received");
             }
             
             // Track any XP-granting obstacle (gaps, planks, ledges, low walls)
@@ -464,7 +286,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 currentArea.obstacleId == 10886 || // Ledge
                 currentArea.obstacleId == 10888) { // Ledge
                 currentlyDoingXpObstacle = true;
-                Microbot.log("Starting XP-granting obstacle - blocking all clicks until XP received");
+                debugLog("Starting XP-granting obstacle - blocking all clicks until XP received");
             }
         } else {
             Microbot.log("ERROR: Could not find any obstacle for area: " + currentArea.name + " (ID: " + currentArea.obstacleId + ")");
@@ -474,7 +296,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         if (obstacle == null && playerPos.getRegionID() == PYRAMID_TOP_REGION && playerPos.getPlane() == 3) {
             TileObject stairs = Rs2GameObject.getTileObject(10857);
             if (stairs != null) {
-                Microbot.log("No obstacle found on pyramid top, found stairs to go back down");
+                debugLog("No obstacle found on pyramid top, found stairs to go back down");
                 return stairs;
             }
         }
@@ -483,23 +305,23 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findObstacleAt(WorldPoint location, int obstacleId) {
-        Microbot.log("findObstacleAt: Looking for obstacle " + obstacleId + " at " + location);
+        debugLog("findObstacleAt: Looking for obstacle " + obstacleId + " at " + location);
         
         // Special handling for plank end which is a ground object
         if (obstacleId == 10868) {
             List<GroundObject> groundObjects = Rs2GameObject.getGroundObjects();
-            Microbot.log("Looking for plank end at " + location + ", checking " + groundObjects.size() + " ground objects");
+            debugLog("Looking for plank end at " + location + ", checking " + groundObjects.size() + " ground objects");
             for (GroundObject go : groundObjects) {
                 if (go.getId() == obstacleId && go.getWorldLocation().equals(location)) {
-                    Microbot.log("Found plank end (ground object) at " + go.getWorldLocation());
+                    debugLog("Found plank end (ground object) at " + go.getWorldLocation());
                     return go;
                 }
             }
-            Microbot.log("No plank end found at expected location " + location);
+            debugLog("No plank end found at expected location " + location);
             // List all plank ends found
             for (GroundObject go : groundObjects) {
                 if (go.getId() == obstacleId) {
-                    Microbot.log("  Found plank end at " + go.getWorldLocation() + " (not at expected location)");
+                    debugLog("  Found plank end at " + go.getWorldLocation() + " (not at expected location)");
                 }
             }
             return null;
@@ -511,7 +333,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             obj.getWorldLocation().equals(location)
         );
         
-        Microbot.log("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " at " + location);
+        debugLog("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " at " + location);
         
         if (obstacles.isEmpty()) {
             // Log all obstacles of this type on the current plane
@@ -519,9 +341,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 obj.getId() == obstacleId && 
                 obj.getPlane() == location.getPlane()
             );
-            Microbot.log("No obstacle found at exact location. Found " + allObstaclesOfType.size() + " obstacles with ID " + obstacleId + " on plane " + location.getPlane() + ":");
+            debugLog("No obstacle found at exact location. Found " + allObstaclesOfType.size() + " obstacles with ID " + obstacleId + " on plane " + location.getPlane() + ":");
             for (TileObject obj : allObstaclesOfType) {
-                Microbot.log("  - " + obstacleId + " at " + obj.getWorldLocation());
+                debugLog("  - " + obstacleId + " at " + obj.getWorldLocation());
             }
             return null;
         }
@@ -530,14 +352,14 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findNearestObstacleStrict(WorldPoint playerPos, int obstacleId, ObstacleArea currentArea) {
-        Microbot.log("Looking for obstacle " + obstacleId + " with strict sequential checking");
+        debugLog("Looking for obstacle " + obstacleId + " with strict sequential checking");
         
         // Special handling for floor 4 gaps FIRST - need to select the correct one
         // Check if we're on floor 4 (plane 2) and looking for a gap, regardless of exact area name
         if (playerPos.getPlane() == 2 && obstacleId == 10859) {
             // If player is after low wall at (3043, 4701-4702), we need the second gap
             if (playerPos.getX() == 3043 && playerPos.getY() >= 4701) {
-                Microbot.log("Player after low wall on floor 4, looking for second gap at (3048, 4695)");
+                debugLog("Player after low wall on floor 4, looking for second gap at (3048, 4695)");
                 // Find the gap at (3048, 4695) specifically
                 List<TileObject> gaps = Rs2GameObject.getAll(obj -> 
                     obj.getId() == obstacleId && 
@@ -548,16 +370,16 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 if (!gaps.isEmpty()) {
                     TileObject secondGap = gaps.get(0);
-                    Microbot.log("Found second gap at " + secondGap.getWorldLocation());
+                    debugLog("Found second gap at " + secondGap.getWorldLocation());
                     return secondGap;
                 } else {
-                    Microbot.log("Could not find second gap on floor 4!");
+                    debugLog("Could not find second gap on floor 4!");
                 }
             }
             // If player is at start of floor 4, we need the first gap
             else if (playerPos.getX() >= 3040 && playerPos.getX() <= 3042 && 
                      playerPos.getY() >= 4695 && playerPos.getY() <= 4697) {
-                Microbot.log("Player at start of floor 4, looking for first gap");
+                debugLog("Player at start of floor 4, looking for first gap");
                 // Find the gap at (3040, 4697) specifically
                 List<TileObject> gaps = Rs2GameObject.getAll(obj -> 
                     obj.getId() == obstacleId && 
@@ -568,7 +390,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 if (!gaps.isEmpty()) {
                     TileObject firstGap = gaps.get(0);
-                    Microbot.log("Found first gap at " + firstGap.getWorldLocation());
+                    debugLog("Found first gap at " + firstGap.getWorldLocation());
                     return firstGap;
                 }
             }
@@ -612,7 +434,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                     .orElse(null);
                     
                 if (nearest != null) {
-                    Microbot.log("Found strictly checked obstacle at " + nearest.getWorldLocation());
+                    debugLog("Found strictly checked obstacle at " + nearest.getWorldLocation());
                     return nearest;
                 }
             }
@@ -628,7 +450,7 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findNearestObstacleWithinDistance(WorldPoint playerPos, int obstacleId, int maxDistance) {
-        Microbot.log("Looking for obstacle " + obstacleId + " within " + maxDistance + " tiles");
+        debugLog("Looking for obstacle " + obstacleId + " within " + maxDistance + " tiles");
         
         List<TileObject> obstacles = Rs2GameObject.getAll(obj -> 
             obj.getId() == obstacleId && 
@@ -637,14 +459,14 @@ public class PyramidCourse implements AgilityCourseHandler {
         );
         
         if (obstacles.isEmpty()) {
-            Microbot.log("No obstacles found within " + maxDistance + " tiles");
+            debugLog("No obstacles found within " + maxDistance + " tiles");
             return null;
         }
         
         // Log all found obstacles for debugging
-        Microbot.log("Found " + obstacles.size() + " obstacles within " + maxDistance + " tiles:");
+        debugLog("Found " + obstacles.size() + " obstacles within " + maxDistance + " tiles:");
         for (TileObject obj : obstacles) {
-            Microbot.log("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+            debugLog("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
         }
         
         return obstacles.stream()
@@ -658,20 +480,20 @@ public class PyramidCourse implements AgilityCourseHandler {
     private TileObject findNearestObstacle(WorldPoint playerPos, int obstacleId) {
         // Special case for Ledge on floor 2 - different ledges based on position
         if (obstacleId == 10860 && playerPos.getPlane() == 2) {
-            Microbot.log("Special handling for floor 2 Ledge at player position " + playerPos);
+            debugLog("Special handling for floor 2 Ledge at player position " + playerPos);
             
             // If player is anywhere in the path from Gap 10861 to Ledge, use east ledge
             if ((playerPos.getX() >= 3372 && playerPos.getX() <= 3373 && playerPos.getY() >= 2841 && playerPos.getY() <= 2850) ||
                 (playerPos.getX() >= 3364 && playerPos.getX() <= 3373 && playerPos.getY() >= 2849 && playerPos.getY() <= 2850)) {
-                Microbot.log("Player in path from Gap 10861 to Ledge, looking for east Ledge at (3372, 2839)");
+                debugLog("Player in path from Gap 10861 to Ledge, looking for east Ledge at (3372, 2839)");
                 
                 // Find the specific ledge at (3372, 2839)
                 TileObject eastLedge = findObstacleAt(new WorldPoint(3372, 2839, 2), obstacleId);
                 if (eastLedge != null) {
-                    Microbot.log("Found east Ledge at " + eastLedge.getWorldLocation());
+                    debugLog("Found east Ledge at " + eastLedge.getWorldLocation());
                     return eastLedge;
                 } else {
-                    Microbot.log("Could not find east Ledge at expected location (3372, 2839)");
+                    debugLog("Could not find east Ledge at expected location (3372, 2839)");
                     // Try to find any ledge on east side as fallback
                     List<TileObject> eastLedges = Rs2GameObject.getAll(obj -> 
                         obj.getId() == obstacleId && 
@@ -695,9 +517,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             );
             
             // Log all ledges found for debugging
-            Microbot.log("Found " + obstacles.size() + " potential ledges on floor 2:");
+            debugLog("Found " + obstacles.size() + " potential ledges on floor 2:");
             for (TileObject obj : obstacles) {
-                Microbot.log("  - Ledge at " + obj.getWorldLocation());
+                debugLog("  - Ledge at " + obj.getWorldLocation());
             }
             
             // Find the ledge closest to the expected position (3364, 2841)
@@ -710,7 +532,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 .orElse(null);
                 
             if (bestLedge != null) {
-                Microbot.log("Selected ledge at " + bestLedge.getWorldLocation() + " (closest to expected position " + expectedLedgePos + ")");
+                debugLog("Selected ledge at " + bestLedge.getWorldLocation() + " (closest to expected position " + expectedLedgePos + ")");
                 return bestLedge;
             } else {
                 Microbot.log("WARNING: No suitable ledge found on floor 2!");
@@ -731,13 +553,13 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
             
             if (nearbyPlanks.isEmpty()) {
-                Microbot.log("No plank ends (ground objects) found nearby");
+                debugLog("No plank ends (ground objects) found nearby");
                 return null;
             }
             
-            Microbot.log("Found " + nearbyPlanks.size() + " plank ends nearby");
+            debugLog("Found " + nearbyPlanks.size() + " plank ends nearby");
             for (GroundObject go : nearbyPlanks) {
-                Microbot.log("  - Plank end at " + go.getWorldLocation() + " (distance: " + go.getWorldLocation().distanceTo(playerPos) + ")");
+                debugLog("  - Plank end at " + go.getWorldLocation() + " (distance: " + go.getWorldLocation().distanceTo(playerPos) + ")");
             }
             
             // Return closest plank end
@@ -761,9 +583,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Log all found obstacles for debugging
-        Microbot.log("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " on plane " + playerPos.getPlane() + ":");
+        debugLog("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " on plane " + playerPos.getPlane() + ":");
         for (TileObject obj : obstacles) {
-            Microbot.log("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+            debugLog("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
         }
         
         // For stairs on floor 1, we need to filter out the wrong stairs
@@ -771,7 +593,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             // If player just climbed up and is at start position (3354-3355, 2833), we should NOT return any stairs
             // The player should go to the low wall instead
             if (playerPos.getX() >= 3354 && playerPos.getX() <= 3355 && playerPos.getY() >= 2833 && playerPos.getY() <= 2835) {
-                Microbot.log("Player just climbed to floor 1, should not interact with stairs yet");
+                debugLog("Player just climbed to floor 1, should not interact with stairs yet");
                 return null;
             }
             
@@ -787,7 +609,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 .collect(Collectors.toList());
                 
             if (obstacles.isEmpty()) {
-                Microbot.log("No appropriate stairs found for progression");
+                debugLog("No appropriate stairs found for progression");
                 return null;
             }
         }
@@ -804,7 +626,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Return the northernmost low wall
             if (!obstacles.isEmpty()) {
                 TileObject northWall = obstacles.get(0);
-                Microbot.log("Selected northernmost low wall at " + northWall.getWorldLocation());
+                debugLog("Selected northernmost low wall at " + northWall.getWorldLocation());
                 return northWall;
             }
         }
@@ -830,7 +652,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             pyramidObstacleIds = Arrays.asList(
                 10865, 10860, 10867, 10868, 10859, 10882, 10886, 10884, 10861, 10888, 10851, 10855
             );
-            Microbot.log("Excluding stairs from search at floor 1 start position");
+            debugLog("Excluding stairs from search at floor 1 start position");
         }
         
         List<Integer> finalObstacleIds = pyramidObstacleIds;
@@ -841,7 +663,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             if (go.getId() == 10868 && 
                 go.getPlane() == playerPos.getPlane() &&
                 go.getWorldLocation().distanceTo(playerPos) <= 15) {
-                Microbot.log("Found nearby plank end (ground object) at " + go.getWorldLocation());
+                debugLog("Found nearby plank end (ground object) at " + go.getWorldLocation());
                 return go;
             }
         }
@@ -857,10 +679,10 @@ public class PyramidCourse implements AgilityCourseHandler {
         );
         
         if (nearbyObstacles.isEmpty()) {
-            Microbot.log("No pyramid obstacles found within " + searchDistance + " tiles on plane " + playerPos.getPlane());
+            debugLog("No pyramid obstacles found within " + searchDistance + " tiles on plane " + playerPos.getPlane());
             // Try expanding search radius for floor 4 (pyramid top area)
             if (playerPos.getPlane() == 2 && playerPos.getX() >= 3040 && playerPos.getX() <= 3050) {
-                Microbot.log("Expanding search for floor 4 pyramid top area...");
+                debugLog("Expanding search for floor 4 pyramid top area...");
                 nearbyObstacles = Rs2GameObject.getAll(obj -> 
                     finalObstacleIds.contains(obj.getId()) && 
                     obj.getPlane() == playerPos.getPlane()
@@ -868,9 +690,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
         }
         
-        Microbot.log("Found " + nearbyObstacles.size() + " pyramid obstacles nearby:");
+        debugLog("Found " + nearbyObstacles.size() + " pyramid obstacles nearby:");
         for (TileObject obj : nearbyObstacles) {
-            Microbot.log("  - ID " + obj.getId() + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+            debugLog("  - ID " + obj.getId() + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
         }
         
         return nearbyObstacles.stream()
@@ -902,7 +724,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Check if we should handle pyramid turn-in instead of walking to start
             if (Rs2Inventory.isFull() && Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
                 if (!handlingPyramidTurnIn) {
-                    Microbot.log("Inventory is full with pyramid tops - going to Simon instead of pyramid start");
+                    debugLog("Inventory is full with pyramid tops - going to Simon instead of pyramid start");
                     handlingPyramidTurnIn = true;
                 }
                 // Handle turn-in instead of walking to start
@@ -915,7 +737,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 // Try to directly click on the pyramid stairs if visible
                 TileObject pyramidStairs = Rs2GameObject.findObjectByIdAndDistance(10857, 10);
                 if (pyramidStairs != null && pyramidStairs.getWorldLocation().distanceTo(START_POINT) <= 2) {
-                    Microbot.log("Clicking directly on pyramid stairs (distance: " + distanceToStart + ")");
+                    debugLog("Clicking directly on pyramid stairs (distance: " + distanceToStart + ")");
                     if (Rs2GameObject.interact(pyramidStairs)) {
                         Global.sleep(600, 800); // Small delay after clicking
                         return true;
@@ -923,7 +745,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 }
                 
                 // Fall back to walking if stairs not found or interaction failed
-                Microbot.log("Walking to pyramid start point (distance: " + distanceToStart + ")");
+                debugLog("Walking to pyramid start point (distance: " + distanceToStart + ")");
                 Rs2Walker.walkTo(START_POINT, 2);
                 return true;
             }
@@ -936,7 +758,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Mark that we've started an obstacle
         lastObstacleStartTime = System.currentTimeMillis();
         
-        // Note: The flags currentlyDoingCrossGap and currentlyDoingXpObstacle 
+        // Note: The flags state.isDoingCrossGap() and currentlyDoingXpObstacle 
         // are set by getCurrentObstacle() and should remain set during this wait
         
         // Simplified wait logic using XP drops as primary signal
@@ -957,8 +779,8 @@ public class PyramidCourse implements AgilityCourseHandler {
             startPos.getX() >= 3042 && startPos.getX() <= 3043 &&
             startPos.getY() >= 4697 && startPos.getY() <= 4698;
         
-        Microbot.log("Starting obstacle at " + startPos + ", initial XP: " + agilityExp);
-        Microbot.log("Flags: CrossGap=" + currentlyDoingCrossGap + ", XpObstacle=" + currentlyDoingXpObstacle);
+        debugLog("Starting obstacle at " + startPos + ", initial XP: " + agilityExp);
+        debugLog("Flags: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + currentlyDoingXpObstacle);
         
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
@@ -969,15 +791,15 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Special case: Climbing rocks for pyramid collection (no XP)
             if (isClimbingRocksForPyramid) {
                 if (!Rs2Player.isMoving() && !Rs2Player.isAnimating() && System.currentTimeMillis() - startTime > 1500) {
-                    Microbot.log("Climbing rocks action completed");
+                    debugLog("Climbing rocks action completed");
                     lastClimbingRocksTime = System.currentTimeMillis();
                     // Clear any flags that might have been set
                     if (currentlyDoingXpObstacle) {
-                        Microbot.log("WARNING: Clearing XP obstacle flag from climbing rocks path");
+                        debugLog("WARNING: Clearing XP obstacle flag from climbing rocks path");
                         currentlyDoingXpObstacle = false;
                     }
-                    if (currentlyDoingCrossGap) {
-                        currentlyDoingCrossGap = false;
+                    if (state.isDoingCrossGap()) {
+                        state.clearCrossGap();
                     }
                     Global.sleep(300, 400);
                     return true;
@@ -992,41 +814,41 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 // Check if this is a stone block (12 XP)
                 if (xpGained == 12) {
-                    Microbot.log("Hit by stone block (12 XP) - ignoring and continuing to wait");
+                    debugLog("Hit by stone block (12 XP) - ignoring and continuing to wait");
                     hitByStoneBlock = true;
                     lastKnownXp = currentXp;
                     continue; // Don't count stone block as completion
                 }
                 
                 // Any other XP gain means obstacle is complete (for XP-granting obstacles)
-                Microbot.log("Received " + xpGained + " XP - obstacle complete!");
+                debugLog("Received " + xpGained + " XP - obstacle complete!");
                 receivedXp = true;
                 lastKnownXp = currentXp;
                 
                 // Check if this was a Cross Gap obstacle
-                boolean wasCrossGap = currentlyDoingCrossGap;
+                boolean wasCrossGap = state.isDoingCrossGap();
                 
                 // For Cross Gap, ensure minimum time has passed even with XP
                 if (wasCrossGap && System.currentTimeMillis() - startTime < 3500) {
                     long waitTime = 3500 - (System.currentTimeMillis() - startTime);
-                    Microbot.log("Cross Gap - waiting additional " + waitTime + "ms for minimum duration");
+                    debugLog("Cross Gap - waiting additional " + waitTime + "ms for minimum duration");
                     Global.sleep((int)waitTime);
                 }
                 
                 // Clear flags since we received XP
-                if (currentlyDoingCrossGap) {
-                    Microbot.log("Cross Gap completed with XP - clearing flag");
-                    currentlyDoingCrossGap = false;
+                if (state.isDoingCrossGap()) {
+                    debugLog("Cross Gap completed with XP - clearing flag");
+                    state.clearCrossGap();
                 }
                 if (currentlyDoingXpObstacle) {
-                    Microbot.log("XP obstacle completed - clearing flag");
+                    debugLog("XP obstacle completed - clearing flag");
                     currentlyDoingXpObstacle = false;
                 }
                 
                 // Add delay to ensure animation finishes
                 // Cross Gap needs longer delay even after XP
                 if (wasCrossGap) {
-                    Microbot.log("Cross Gap - waiting longer for animation to fully complete");
+                    debugLog("Cross Gap - waiting longer for animation to fully complete");
                     Global.sleep(800, 1000);
                 } else {
                     Global.sleep(200, 300);
@@ -1038,14 +860,14 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             // Plane change (stairs/doorway)
             if (currentPlane != plane) {
-                Microbot.log("Plane changed - obstacle complete");
+                debugLog("Plane changed - obstacle complete");
                 // Clear flags when plane changes
-                if (currentlyDoingCrossGap) {
-                    Microbot.log("Clearing Cross Gap flag due to plane change");
-                    currentlyDoingCrossGap = false;
+                if (state.isDoingCrossGap()) {
+                    debugLog("Clearing Cross Gap flag due to plane change");
+                    state.clearCrossGap();
                 }
                 if (currentlyDoingXpObstacle) {
-                    Microbot.log("Clearing XP obstacle flag due to plane change");
+                    debugLog("Clearing XP obstacle flag due to plane change");
                     currentlyDoingXpObstacle = false;
                 }
                 Global.sleep(200, 300);
@@ -1054,10 +876,10 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             // Health loss (failed obstacle)
             if (currentHealth < initialHealth) {
-                Microbot.log("Failed obstacle (lost health)");
+                debugLog("Failed obstacle (lost health)");
                 // Clear flags if we failed
-                if (currentlyDoingCrossGap) {
-                    currentlyDoingCrossGap = false;
+                if (state.isDoingCrossGap()) {
+                    state.clearCrossGap();
                 }
                 if (currentlyDoingXpObstacle) {
                     currentlyDoingXpObstacle = false;
@@ -1075,7 +897,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                     // If we're expecting XP (flag is set), don't complete based on movement alone
                     if (currentlyDoingXpObstacle) {
                         // Special handling for Cross Gap - it moves >3 tiles but takes 6+ seconds
-                        if (currentlyDoingCrossGap) {
+                        if (state.isDoingCrossGap()) {
                             // Cross Gap needs at least 6 seconds to complete
                             if (System.currentTimeMillis() - startTime < 6000) {
                                 continue; // Keep waiting for Cross Gap
@@ -1083,8 +905,8 @@ public class PyramidCourse implements AgilityCourseHandler {
                             // After 6 seconds, only complete if timeout fully expires
                             // Don't use movement check for Cross Gap as it moves >3 tiles during animation
                             if (System.currentTimeMillis() - startTime >= timeoutMs) {
-                                Microbot.log("Cross Gap timeout after " + (System.currentTimeMillis() - startTime) + "ms - completing");
-                                currentlyDoingCrossGap = false;
+                                debugLog("Cross Gap timeout after " + (System.currentTimeMillis() - startTime) + "ms - completing");
+                                state.clearCrossGap();
                                 currentlyDoingXpObstacle = false;
                                 return true;
                             }
@@ -1099,9 +921,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                         }
                         // After 4 seconds without XP, check if we at least moved
                         if (distanceMoved >= 3) {
-                            Microbot.log("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
+                            debugLog("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
                             // Clear flags since something went wrong
-                            currentlyDoingCrossGap = false;
+                            state.clearCrossGap();
                             currentlyDoingXpObstacle = false;
                             return true;
                         }
@@ -1109,15 +931,15 @@ public class PyramidCourse implements AgilityCourseHandler {
                     
                     // For non-XP obstacles, movement indicates completion
                     if (distanceMoved >= 3 && !currentlyDoingXpObstacle) {
-                        Microbot.log("Non-XP obstacle complete (moved " + distanceMoved + " tiles)");
+                        debugLog("Non-XP obstacle complete (moved " + distanceMoved + " tiles)");
                         
                         // Clear flags in case they were set
-                        if (currentlyDoingCrossGap) {
-                            Microbot.log("Clearing Cross Gap flag (movement completion)");
-                            currentlyDoingCrossGap = false;
+                        if (state.isDoingCrossGap()) {
+                            debugLog("Clearing Cross Gap flag (movement completion)");
+                            state.clearCrossGap();
                         }
                         if (currentlyDoingXpObstacle) {
-                            Microbot.log("Clearing XP obstacle flag (movement completion)");
+                            debugLog("Clearing XP obstacle flag (movement completion)");
                             currentlyDoingXpObstacle = false;
                         }
                         
@@ -1127,14 +949,14 @@ public class PyramidCourse implements AgilityCourseHandler {
                     
                     // If we were hit by stone block and haven't received proper XP, retry
                     if (hitByStoneBlock && !receivedXp && System.currentTimeMillis() - startTime > 2000) {
-                        Microbot.log("Stone block interrupted obstacle, no proper XP received - retrying");
+                        debugLog("Stone block interrupted obstacle, no proper XP received - retrying");
                         // Clear flags since we're going to retry
-                        if (currentlyDoingCrossGap) {
-                            Microbot.log("Clearing Cross Gap flag for retry");
-                            currentlyDoingCrossGap = false;
+                        if (state.isDoingCrossGap()) {
+                            debugLog("Clearing Cross Gap flag for retry");
+                            state.clearCrossGap();
                         }
                         if (currentlyDoingXpObstacle) {
-                            Microbot.log("Clearing XP obstacle flag for retry");
+                            debugLog("Clearing XP obstacle flag for retry");
                             currentlyDoingXpObstacle = false;
                         }
                         Global.sleep(800, 1200);
@@ -1147,26 +969,26 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Timeout reached
-        Microbot.log("Timeout after " + timeoutMs + "ms - checking if made progress");
+        debugLog("Timeout after " + timeoutMs + "ms - checking if made progress");
         int distanceMoved = Rs2Player.getWorldLocation().distanceTo(startPos);
         
         // Clear flags on timeout
-        if (currentlyDoingCrossGap) {
-            Microbot.log("Clearing Cross Gap flag due to timeout");
-            currentlyDoingCrossGap = false;
+        if (state.isDoingCrossGap()) {
+            debugLog("Clearing Cross Gap flag due to timeout");
+            state.clearCrossGap();
         }
         if (currentlyDoingXpObstacle) {
-            Microbot.log("Clearing XP obstacle flag due to timeout");
+            debugLog("Clearing XP obstacle flag due to timeout");
             currentlyDoingXpObstacle = false;
         }
         
         // If we received XP or moved significantly, consider it successful
         if (receivedXp || distanceMoved >= 3) {
-            Microbot.log("Made progress despite timeout (XP: " + receivedXp + ", moved: " + distanceMoved + " tiles)");
+            debugLog("Made progress despite timeout (XP: " + receivedXp + ", moved: " + distanceMoved + " tiles)");
             return true;
         }
         
-        Microbot.log("No progress made - will retry");
+        debugLog("No progress made - will retry");
         return false;
     }
     
@@ -1189,8 +1011,8 @@ public class PyramidCourse implements AgilityCourseHandler {
         try {
             // Check if we still have pyramid tops
             if (!Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
-                Microbot.log("No pyramid tops found in inventory - returning to course");
-                handlingPyramidTurnIn = false;
+                debugLog("No pyramid tops found in inventory - returning to course");
+                state.clearPyramidTurnIn();
                 return false;
             }
             
@@ -1199,7 +1021,7 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             // If Simon is found and reachable, use pyramid top on him
             if (simon != null && Rs2GameObject.canReach(simon.getWorldLocation())) {
-                Microbot.log("Simon found and reachable, using pyramid top");
+                debugLog("Simon found and reachable, using pyramid top");
                 
                 // Handle dialogue first if already in dialogue
                 if (Rs2Dialogue.isInDialogue()) {
@@ -1220,29 +1042,29 @@ public class PyramidCourse implements AgilityCourseHandler {
                     // Not in dialogue, use pyramid top on Simon
                     boolean used = Rs2Inventory.useItemOnNpc(ItemID.PYRAMID_TOP, simon);
                     if (used) {
-                        Microbot.log("Successfully used pyramid top on Simon");
+                        debugLog("Successfully used pyramid top on Simon");
                         Global.sleepUntil(() -> Rs2Dialogue.isInDialogue(), 3000);
                     } else {
-                        Microbot.log("Failed to use pyramid top on Simon");
+                        debugLog("Failed to use pyramid top on Simon");
                     }
                 }
                 return true;
             }
             
             // Simon not found or not reachable, walk to him
-            Microbot.log("Simon not found or not reachable, walking to location " + SIMON_LOCATION);
+            debugLog("Simon not found or not reachable, walking to location " + SIMON_LOCATION);
             Rs2Walker.walkTo(SIMON_LOCATION, 2);
             Rs2Player.waitForWalking();
             
             // Check if we've completed the turn-in (no pyramids left and not in dialogue)
             if (!Rs2Inventory.contains(ItemID.PYRAMID_TOP) && !Rs2Dialogue.isInDialogue()) {
-                Microbot.log("Pyramid tops turned in successfully");
-                handlingPyramidTurnIn = false;
+                debugLog("Pyramid tops turned in successfully");
+                state.clearPyramidTurnIn();
                 
                 // Walk back towards the pyramid start
                 WorldPoint currentPos = Rs2Player.getWorldLocation();
                 if (currentPos.distanceTo(START_POINT) > 10) {
-                    Microbot.log("Walking back to pyramid start");
+                    debugLog("Walking back to pyramid start");
                     Rs2Walker.walkTo(START_POINT);
                 }
                 return false; // Done with turn-in, can resume obstacles
@@ -1253,7 +1075,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         } catch (Exception e) {
             Microbot.log("Error in handlePyramidTurnIn: " + e.getMessage());
             e.printStackTrace();
-            handlingPyramidTurnIn = false;
+            state.clearPyramidTurnIn();
             return false;
         }
     }
