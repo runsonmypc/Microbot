@@ -710,6 +710,17 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleHarvestablePatch(GameObject patch) {
+        // Check if inventory is full before starting
+        if (Rs2Inventory.isFull()) {
+            log.info("Inventory full before harvesting - attempting to note crops");
+            if (!noteHarvestedCrops()) {
+                log.error("Failed to note crops and inventory is full - cannot continue");
+                plugin.setStatus("Inventory full - cannot continue");
+                plugin.stopPlugin();
+                return;
+            }
+        }
+        
         // Mark that we're harvesting for contract completion tracking
         harvestingContract = true;
         
@@ -728,12 +739,40 @@ public class FarmingContractScript extends Script {
         // Wait for harvesting to start
         sleepUntil(() -> Rs2Player.isAnimating(), 2000);
         
-        // Wait for harvesting to complete (player will auto-harvest until done or inventory full)
+        // Wait for harvesting to complete or inventory to fill
         if (Rs2Player.isAnimating()) {
-            log.info("Harvesting in progress - waiting for completion");
-            // Use waitForAnimation with a reasonable idle time (1500ms) 
-            // This will wait until the player stops animating for 1.5 seconds
-            Rs2Player.waitForAnimation(1500);
+            log.info("Harvesting in progress - waiting for completion or inventory full");
+            
+            // Wait until either:
+            // 1. Player stops animating (harvesting complete)
+            // 2. Inventory becomes full (need to note crops)
+            boolean stoppedDueToFull = sleepUntil(() -> 
+                !Rs2Player.isAnimating() || Rs2Inventory.isFull(), 
+                20000  // Max wait time
+            );
+            
+            // If we stopped because inventory is full
+            if (Rs2Inventory.isFull() && Rs2Player.isAnimating()) {
+                log.info("Inventory filled during harvesting - noting crops");
+                
+                // Wait for current animation to finish
+                Rs2Player.waitForAnimation(1500);
+                
+                // Note the crops
+                if (noteHarvestedCrops()) {
+                    log.info("Successfully noted crops - resuming harvest");
+                    // Will continue harvesting on next loop iteration
+                    return;
+                } else {
+                    log.error("Failed to note crops - stopping");
+                    plugin.setStatus("Failed to note crops");
+                    plugin.stopPlugin();
+                    return;
+                }
+            } else {
+                // Normal completion - wait for animation to fully stop
+                Rs2Player.waitForAnimation(1500);
+            }
         }
         
         // Small additional delay to ensure we're really done
@@ -765,6 +804,60 @@ public class FarmingContractScript extends Script {
         
         log.info("Harvesting done - will re-evaluate patch state on next loop");
         // The patch state will be re-evaluated on next loop
+    }
+    
+    /**
+     * Notes harvested crops with the Tool Leprechaun to free inventory space.
+     * @return true if crops were successfully noted, false otherwise
+     */
+    private boolean noteHarvestedCrops() {
+        // Find the Tool Leprechaun NPC
+        Rs2NpcModel leprechaun = Rs2Npc.getNpc("Tool Leprechaun");
+        if (leprechaun == null) {
+            log.warn("Tool Leprechaun not found nearby");
+            return false;
+        }
+        
+        // Get the harvested crop name based on the contract
+        String cropName = currentContract.getName().toLowerCase();
+        
+        // Find the unnoted crop item in inventory
+        Rs2ItemModel unnotedCrop = Rs2Inventory.getUnNotedItem(cropName, false);
+        if (unnotedCrop == null) {
+            log.warn("No unnoted {} found in inventory to note", cropName);
+            return false;
+        }
+        
+        int initialCount = Rs2Inventory.count(unnotedCrop.getId());
+        int initialEmptySlots = Rs2Inventory.emptySlotCount();
+        log.info("Noting {} {} (empty slots: {})", initialCount, cropName, initialEmptySlots);
+        
+        // Use the crop on the Tool Leprechaun
+        Rs2Inventory.useItemOnNpc(unnotedCrop.getId(), leprechaun);
+        
+        // Wait for inventory to change (crops get noted)
+        boolean changed = Rs2Inventory.waitForInventoryChanges(5000);
+        
+        if (!changed) {
+            log.warn("Inventory didn't change after using crop on leprechaun");
+            return false;
+        }
+        
+        // Small delay to ensure the noting is complete
+        sleep(100, 300);
+        
+        // Verify that we freed up inventory space
+        int newEmptySlots = Rs2Inventory.emptySlotCount();
+        int newCount = Rs2Inventory.count(unnotedCrop.getId());
+        
+        if (newEmptySlots > initialEmptySlots || newCount < initialCount) {
+            log.info("Successfully noted crops - freed {} slots (now have {} empty)", 
+                    newEmptySlots - initialEmptySlots, newEmptySlots);
+            return true;
+        } else {
+            log.warn("Noting may have failed - no inventory space freed");
+            return false;
+        }
     }
     
     private void handleUncheckedPatch(GameObject patch) {
@@ -831,7 +924,24 @@ public class FarmingContractScript extends Script {
     
     private void handleDeadPatch(GameObject patch) {
         Rs2GameObject.interact(patch, "Clear");
-        Rs2Player.waitForAnimation(3000);
+        sleepUntil(() -> Rs2Player.isAnimating() || Rs2Dialogue.isInDialogue(), 3000);
+        
+        // Handle confirmation dialogue for bushes and cacti
+        if (Rs2Dialogue.isInDialogue()) {
+            log.info("Clearing confirmation dialogue appeared");
+            
+            // Look for the "Yes" option to clear for new crops
+            if (Rs2Dialogue.hasDialogueOption("Yes, I want to clear it for new crops.")) {
+                log.info("Confirming clear for new crops");
+                Rs2Dialogue.clickOption("Yes, I want to clear it for new crops.");
+                sleepUntil(() -> !Rs2Dialogue.isInDialogue(), 2000);
+            }
+        }
+        
+        // Wait for clearing animation
+        if (Rs2Player.isAnimating()) {
+            Rs2Player.waitForAnimation(3000);
+        }
     }
     
     private void handleDiseasedPatch(GameObject patch) {
