@@ -12,9 +12,9 @@ import net.runelite.client.plugins.microbot.Microbot;
 import java.awt.*;
 
 @PluginDescriptor(
-        name = PluginDescriptor.Default + "Event Dismiss</html>",
-        description = "Random Event Dismisser",
-        tags = {"random", "events", "microbot"},
+        name = PluginDescriptor.Default + "Event Handler</html>",
+        description = "Handles random events - dismiss or accept rewards",
+        tags = {"random", "events", "microbot", "lamp"},
         enabledByDefault = false
 )
 @Slf4j
@@ -25,6 +25,7 @@ public class EventDismissPlugin extends Plugin {
     private EventDismissConfig config;
 
     private DismissNpcEvent dismissNpcEvent;
+    private UseLampEvent useLampEvent;
 
     @Provides
     EventDismissConfig provideConfig(ConfigManager configManager) {
@@ -34,11 +35,15 @@ public class EventDismissPlugin extends Plugin {
     @Override
     protected void startUp() throws AWTException {
         dismissNpcEvent = new DismissNpcEvent(config);
+        useLampEvent = new UseLampEvent(config);
         Microbot.getBlockingEventManager().add(dismissNpcEvent);
+        Microbot.getBlockingEventManager().add(useLampEvent);
     }
 
     protected void shutDown() {
         Microbot.getBlockingEventManager().remove(dismissNpcEvent);
+        Microbot.getBlockingEventManager().remove(useLampEvent);
         dismissNpcEvent = null;
+        useLampEvent = null;
     }
 }

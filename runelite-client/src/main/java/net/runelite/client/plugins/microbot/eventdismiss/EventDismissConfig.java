@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.eventdismiss;
 
+import net.runelite.api.Skill;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -8,10 +9,69 @@ import net.runelite.client.config.ConfigSection;
 @ConfigGroup("EventDismiss")
 public interface EventDismissConfig extends Config {
 
+    @ConfigSection(
+            name = "Lamp Events",
+            description = "Settings for lamp-giving random events",
+            position = 0
+    )
+    String lampSection = "lampEvents";
+
+    @ConfigItem(
+            name = "Genie",
+            keyName = "genieAction",
+            position = 0,
+            section = lampSection,
+            description = "Accept or dismiss Genie random event"
+    )
+    default EventAction genieAction() {
+        return EventAction.ACCEPT;
+    }
+
+    @ConfigItem(
+            name = "Count Check",
+            keyName = "countCheckAction",
+            position = 1,
+            section = lampSection,
+            description = "Accept or dismiss Count Check random event"
+    )
+    default EventAction countCheckAction() {
+        return EventAction.ACCEPT;
+    }
+
+    @ConfigItem(
+            name = "Lamp Skill",
+            keyName = "lampSkill",
+            position = 2,
+            section = lampSection,
+            description = "Skill to use experience lamps on"
+    )
+    default Skill lampSkill() {
+        return Skill.HERBLORE;
+    }
+
+    @ConfigItem(
+            name = "Check for Lamps",
+            keyName = "checkForLamps",
+            position = 3,
+            section = lampSection,
+            description = "Periodically check inventory for lamps and use them. Not needed for random events (Genie/Count Check handle automatically), but useful for testing and other lamp sources"
+    )
+    default boolean checkForLamps() {
+        return false;
+    }
+
+    @ConfigSection(
+            name = "Other Events",
+            description = "Settings for other random events",
+            position = 1
+    )
+    String otherSection = "otherEvents";
+
     @ConfigItem(
             name = "Beekeeper Dismiss",
             keyName = "dismissBeekeeper",
             position = 0,
+            section = otherSection,
             description = "Dismiss Beekeeper random event"
     )
     default boolean dismissBeekeeper() {
@@ -22,6 +82,7 @@ public interface EventDismissConfig extends Config {
             name = "Capt' Arnav Dismiss",
             keyName = "dismissCaptArnav",
             position = 1,
+            section = otherSection,
             description = "Dismiss Capt' Arnav random event"
     )
     default boolean dismissArnav() {
@@ -32,6 +93,7 @@ public interface EventDismissConfig extends Config {
             name = "Certers Dismiss",
             keyName = "dismissCerters",
             position = 2,
+            section = otherSection,
             description = "Dismiss Giles, Miles, and Niles Certer random events"
     )
     default boolean dismissCerters() {
@@ -39,19 +101,10 @@ public interface EventDismissConfig extends Config {
     }
 
     @ConfigItem(
-            name = "Count Check Dismiss",
-            keyName = "dismissCountCheck",
-            position = 3,
-            description = "Dismiss Count Check random event"
-    )
-    default boolean dismissCountCheck() {
-        return false;
-    }
-
-    @ConfigItem(
             name = "Drill Demon Dismiss",
             keyName = "dismissDrillDemon",
-            position = 4,
+            position = 3,
+            section = otherSection,
             description = "Dismiss Drill Demon random event"
     )
     default boolean dismissDrillDemon() {
@@ -61,7 +114,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Drunken Dwarf Dismiss",
             keyName = "dismissDrunkenDwarf",
-            position = 5,
+            position = 4,
+            section = otherSection,
             description = "Dismiss Drunken Dwarf random event"
     )
     default boolean dismissDrunkenDwarf() {
@@ -71,7 +125,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Evil Bob Dismiss",
             keyName = "dismissEvilBob",
-            position = 6,
+            position = 5,
+            section = otherSection,
             description = "Dismiss Evil Bob random event"
     )
     default boolean dismissEvilBob() {
@@ -81,7 +136,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Evil Twin Dismiss",
             keyName = "dismissEvilTwin",
-            position = 7,
+            position = 6,
+            section = otherSection,
             description = "Dismiss Evil Twin random event"
     )
     default boolean dismissEvilTwin() {
@@ -91,7 +147,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Freaky Forester Dismiss",
             keyName = "dismissFreakyForester",
-            position = 8,
+            position = 7,
+            section = otherSection,
             description = "Dismiss Freaky Forester random event"
     )
     default boolean dismissFreakyForester() {
@@ -99,19 +156,10 @@ public interface EventDismissConfig extends Config {
     }
 
     @ConfigItem(
-            name = "Genie Dismiss",
-            keyName = "dismissGenie",
-            position = 9,
-            description = "Dismiss Genie random event"
-    )
-    default boolean dismissGenie() {
-        return false;
-    }
-
-    @ConfigItem(
             name = "Gravedigger Dismiss",
             keyName = "dismissGravedigger",
-            position = 10,
+            position = 8,
+            section = otherSection,
             description = "Dismiss Gravedigger random event"
     )
     default boolean dismissGravedigger() {
@@ -121,7 +169,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Jekyll and Hyde Dismiss",
             keyName = "dismissJekyllAndHyde",
-            position = 11,
+            position = 9,
+            section = otherSection,
             description = "Dismiss Jekyll and Hyde random events"
     )
     default boolean dismissJekyllAndHyde() {
@@ -131,7 +180,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Kiss the Frog Dismiss",
             keyName = "dismissKissTheFrog",
-            position = 12,
+            position = 10,
+            section = otherSection,
             description = "Dismiss Kiss the Frog random event"
     )
     default boolean dismissKissTheFrog() {
@@ -141,7 +191,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Mysterious Old Man Dismiss",
             keyName = "dismissMysteriousOldMan",
-            position = 13,
+            position = 11,
+            section = otherSection,
             description = "Dismiss Mysterious Old Man random event"
     )
     default boolean dismissMysteriousOldMan() {
@@ -151,7 +202,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Pillory Dismiss",
             keyName = "dismissPillory",
-            position = 14,
+            position = 12,
+            section = otherSection,
             description = "Dismiss Pillory random event"
     )
     default boolean dismissPillory() {
@@ -161,7 +213,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Pinball Dismiss",
             keyName = "dismissPinball",
-            position = 15,
+            position = 13,
+            section = otherSection,
             description = "Dismiss Pinball random events"
     )
     default boolean dismissPinball() {
@@ -171,7 +224,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Quiz Master Dismiss",
             keyName = "dismissQuizMaster",
-            position = 16,
+            position = 14,
+            section = otherSection,
             description = "Dismiss Quiz Master random event"
     )
     default boolean dismissQuizMaster() {
@@ -181,7 +235,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Rick Turpentine Dismiss",
             keyName = "dismissRickTurpentine",
-            position = 17,
+            position = 15,
+            section = otherSection,
             description = "Dismiss Rick Turpentine random event"
     )
     default boolean dismissRickTurpentine() {
@@ -191,7 +246,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Sandwich Lady Dismiss",
             keyName = "dismissSandwichLady",
-            position = 18,
+            position = 16,
+            section = otherSection,
             description = "Dismiss Sandwich Lady random event"
     )
     default boolean dismissSandwichLady() {
@@ -201,7 +257,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Strange Plant Dismiss",
             keyName = "dismissStrangePlant",
-            position = 19,
+            position = 17,
+            section = otherSection,
             description = "Dismiss Strange Plant random event"
     )
     default boolean dismissStrangePlant() {
@@ -211,7 +268,8 @@ public interface EventDismissConfig extends Config {
     @ConfigItem(
             name = "Surprise Exam Dismiss",
             keyName = "dismissSurpriseExam",
-            position = 20,
+            position = 18,
+            section = otherSection,
             description = "Dismiss Surprise Exam random event"
     )
     default boolean dismissSurpriseExam() {
