@@ -32,7 +32,7 @@ public interface EventDismissConfig extends Config {
             keyName = "countCheckAction",
             position = 1,
             section = lampSection,
-            description = "Accept or dismiss Count Check random event"
+            description = "Accept or dismiss Count Check random event. Note: Requires bank PIN and authenticator enabled to receive lamp"
     )
     default EventAction countCheckAction() {
         return EventAction.ACCEPT;
