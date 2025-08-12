@@ -16,9 +16,9 @@ import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
-import net.runelite.client.plugins.microbot.util.inventory.models.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
-import net.runelite.client.plugins.microbot.util.npc.models.Rs2NpcModel;
+import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.timetracking.farming.Produce;
@@ -34,7 +34,9 @@ import javax.inject.Inject;
 import java.util.Arrays;
 import java.awt.Polygon;
 import java.lang.reflect.Method;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -293,8 +295,8 @@ public class FarmingContractScript extends Script {
         handleSeedPacks();
         
         // Determine what we need based on the last known crop state
-        boolean needsHarvesting = (lastKnownCropState == CropState.HARVESTABLE || 
-                                   lastKnownCropState == CropState.UNCHECKED);
+        boolean needsHarvesting = (lastKnownCropState == CropState.HARVESTABLE);
+        boolean needsChecking = (lastKnownCropState == CropState.UNCHECKED);  // Check-health, no seeds needed
         boolean needsClearing = (lastKnownCropState == CropState.DEAD);
         boolean needsCuring = (lastKnownCropState == CropState.DISEASED);
         boolean needsPlanting = (lastKnownCropState == CropState.EMPTY || 
@@ -316,6 +318,15 @@ public class FarmingContractScript extends Script {
         }
         
         // Determine if we're ready
+        if (needsChecking) {
+            // For check-health, we just need a spade in case we need to clear after
+            if (hasSpade) {
+                log.info("Ready to check-health on patch");
+                state = FarmingContractState.FARM;
+                return;
+            }
+        }
+        
         if (needsHarvesting) {
             // For harvesting, we also need planting items ready for after
             boolean hasPlantingItems = hasSpade && hasRake && hasDibber && Rs2Inventory.contains(seedId);
@@ -359,18 +370,19 @@ public class FarmingContractScript extends Script {
         if (Rs2Bank.openBank()) {
             Rs2Bank.depositAllExcept("Rake", "Spade", "Seed dibber", "Magic secateurs", "Coins", "Plant cure");
             
-            // Get only what we need
+            // Get only what we need - use withdrawX to ensure we get exactly 1
             if (!hasSpade && Rs2Bank.hasBankItem("Spade", 1)) {
-                Rs2Bank.withdrawOne("Spade");
+                Rs2Bank.withdrawX("Spade", 1);
             }
             
             // We need planting items if we're planting, clearing, or harvesting (since we'll plant after)
+            // But NOT for check-health (UNCHECKED state) since we don't know if we'll need to replant
             if (needsPlanting || needsClearing || needsHarvesting) {
                 if (!hasRake && Rs2Bank.hasBankItem("Rake", 1)) {
-                    Rs2Bank.withdrawOne("Rake");
+                    Rs2Bank.withdrawX("Rake", 1);
                 }
                 if (!hasDibber && Rs2Bank.hasBankItem("Seed dibber", 1)) {
-                    Rs2Bank.withdrawOne("Seed dibber");
+                    Rs2Bank.withdrawX("Seed dibber", 1);
                 }
                 
                 if (seedId != -1 && !Rs2Inventory.contains(seedId)) {
@@ -384,7 +396,7 @@ public class FarmingContractScript extends Script {
                                 needsHarvesting ? "harvesting" : (needsClearing ? "clearing" : "preparing"));
                         
                         if (config.useCompost()) {
-                            Rs2Bank.withdrawOne(config.compostType().toString());
+                            Rs2Bank.withdrawX(config.compostType().toString(), 1);
                         }
                     } else {
                         // No seeds in bank - stop the plugin
@@ -398,11 +410,12 @@ public class FarmingContractScript extends Script {
             }
             
             if (needsCuring && !hasPlantCure && Rs2Bank.hasBankItem("Plant cure", 1)) {
-                Rs2Bank.withdrawOne("Plant cure");
+                Rs2Bank.withdrawX("Plant cure", 1);
             }
             
             // For tree contracts, ensure we have coins for clearing
-            if (needsHarvesting && (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
+            // We need coins for both harvesting and checking (since check-health leads to clearing)
+            if ((needsHarvesting || needsChecking) && (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
                 currentContract.getPatchImplementation() == PatchImplementation.FRUIT_TREE)) {
                 if (Rs2Inventory.count("Coins") < 200) {
                     Rs2Bank.withdrawX("Coins", 200);
@@ -463,18 +476,37 @@ public class FarmingContractScript extends Script {
             }
         }
         
-        // Get patch state from FarmingHandler (G-Mason0's approach) for additional validation
-        CropState cropState = null;
+        // First, infer state from actual patch actions (most reliable for current state)
+        CropState actionState = inferStateFromActions(patch);
+        log.info("Patch state from actions: {}", actionState);
+        
+        // Get state from FarmingHandler for comparison
+        CropState handlerState = null;
         if (farmingHandler != null && farmingWorld != null) {
             FarmingPatch targetPatch = findFarmingPatch(currentContract);
             if (targetPatch != null) {
-                cropState = farmingHandler.predictPatch(targetPatch);
-                log.info("FarmingHandler state for {}: {}", currentContract.getName(), cropState);
+                handlerState = farmingHandler.predictPatch(targetPatch);
+                log.info("FarmingHandler state for {}: {}", currentContract.getName(), handlerState);
             }
         }
         
+        // Determine which state to use
+        CropState cropState = actionState;
+        
+        // Special case: if actions show DEAD but handler shows HARVESTABLE
+        // This happens with bushes after they've been fully harvested
+        if (actionState == CropState.DEAD && handlerState == CropState.HARVESTABLE) {
+            log.info("Bush appears dead after harvesting - needs clearing");
+            cropState = CropState.DEAD;  // Trust the actions
+        }
+        // Special case: if handler shows EMPTY but actions show something else
+        // This happens when FarmingHandler is out of sync
+        else if (handlerState == CropState.EMPTY && actionState != CropState.EMPTY) {
+            log.info("FarmingHandler reports EMPTY but patch has actions - trusting actions");
+            cropState = actionState;  // Trust the actions
+        }
         // Special handling for trees/fruit trees - HARVESTABLE means it was checked and needs clearing
-        if (cropState == CropState.HARVESTABLE && 
+        else if (handlerState == CropState.HARVESTABLE && 
             (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
              currentContract.getPatchImplementation() == PatchImplementation.FRUIT_TREE)) {
             // For trees, HARVESTABLE after check-health means it needs to be cleared by gardener
@@ -482,11 +514,10 @@ public class FarmingContractScript extends Script {
             handleCheckedTree(patch);
             return;
         }
-        
-        // If no state from handler, infer from actions as fallback
-        if (cropState == null) {
-            cropState = inferStateFromActions(patch);
-            log.info("Inferred state from actions for {}: {}", currentContract.getName(), cropState);
+        // If actions couldn't determine state, use handler state
+        else if (actionState == null && handlerState != null) {
+            cropState = handlerState;
+            log.info("Using FarmingHandler state as fallback: {}", cropState);
         }
         
         log.info("Handling {} patch in state: {} (Object ID: {})", 
@@ -524,40 +555,8 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleEmptyPatch(GameObject patch) {
-        // Check if patch actually has something growing (FarmingHandler might be out of sync)
-        var comp = Rs2GameObject.convertToObjectComposition(patch, false);
-        if (comp != null && comp.getActions() != null) {
-            boolean hasInspect = false;
-            boolean hasRake = false;
-            for (String action : comp.getActions()) {
-                if (action != null) {
-                    if (action.equals("Inspect")) hasInspect = true;
-                    if (action.toLowerCase().contains("rake")) hasRake = true;
-                }
-            }
-            
-            // If patch has "Inspect" but no "Rake", something is already growing
-            if (hasInspect && !hasRake) {
-                log.warn("Patch reported as EMPTY but has 'Inspect' action - something is already growing!");
-                log.info("Actual patch actions: {}", Arrays.toString(comp.getActions()));
-                
-                // Try to determine actual state from actions
-                CropState actualState = inferStateFromActions(patch);
-                log.info("Detected actual patch state from actions: {}", actualState);
-                
-                // Stop the plugin - can't plant contract on occupied patch
-                if (actualState == CropState.GROWING) {
-                    log.error("Cannot plant contract - patch already has crops growing!");
-                    plugin.setStatus("Patch occupied - cannot plant contract");
-                    plugin.stopPlugin();
-                    return;
-                } else if (actualState == CropState.HARVESTABLE) {
-                    log.info("Patch is actually harvestable - harvesting before planting");
-                    handleHarvestablePatch(patch);
-                    return;
-                }
-            }
-        }
+        // The patch state has already been properly determined by inferStateFromActions
+        // which correctly handles the fact that "Inspect" is always present on all patches
         
         // Always check for weeds first (they can grow between checks)
         if (checkAndClearWeeds(patch)) {
@@ -790,6 +789,17 @@ public class FarmingContractScript extends Script {
                 }
             }
             
+            // For bushes/cacti, they might need further clearing after harvesting
+            if (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+                currentContract.getPatchImplementation() == PatchImplementation.CACTUS) {
+                if (newState == CropState.DEAD) {
+                    log.info("Bush/Cactus harvested but now dead - needs clearing");
+                    // Will handle clearing in next loop iteration
+                    harvestingContract = false;
+                    return;
+                }
+            }
+            
             // If patch is now empty, we've completed the contract
             if (newState == CropState.EMPTY) {
                 log.info("Patch cleared after harvesting contract crop - contract complete!");
@@ -861,9 +871,20 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleUncheckedPatch(GameObject patch) {
-        // For trees - check health first
+        // Check health first (for trees, bushes, etc.)
+        log.info("Performing check-health on {} patch", currentContract.getPatchImplementation());
         Rs2GameObject.interact(patch, "Check-health");
         Rs2Inventory.waitForInventoryChanges(5000);
+        
+        // For bushes and cacti, check-health completes the contract but we need to continue clearing
+        if (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+            currentContract.getPatchImplementation() == PatchImplementation.CACTUS) {
+            log.info("Bush/Cactus contract complete after check-health, but patch needs full clearing");
+            // Don't set state to COMPLETE - let the patch continue to be processed
+            // The patch will go through HARVESTABLE -> DEAD -> EMPTY states
+            // We'll handle it in subsequent loops
+            return;
+        }
         
         // For trees and fruit trees, need to pay for clearing after check-health
         if (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
@@ -941,6 +962,22 @@ public class FarmingContractScript extends Script {
         // Wait for clearing animation
         if (Rs2Player.isAnimating()) {
             Rs2Player.waitForAnimation(3000);
+        }
+        
+        // For bushes/cacti that have already completed their contract
+        // Check if the patch is now empty and the contract is done
+        if (currentContract != null && 
+            (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+             currentContract.getPatchImplementation() == PatchImplementation.CACTUS)) {
+            
+            // Check if the patch is now empty
+            CropState newState = inferStateFromActions(patch);
+            if (newState == CropState.EMPTY) {
+                log.info("Bush/Cactus patch fully cleared after contract completion");
+                // The contract is already complete (from check-health)
+                // Now the patch is also empty, so we can move to COMPLETE
+                state = FarmingContractState.COMPLETE;
+            }
         }
     }
     
@@ -1368,7 +1405,7 @@ public class FarmingContractScript extends Script {
             case FLOWER: return new WorldPoint(1260, 3727, 0);
             case BUSH: return new WorldPoint(1260, 3732, 0);
             case ALLOTMENT: return new WorldPoint(1265, 3729, 0);
-            case CACTUS: return new WorldPoint(1264, 3746, 0);
+            case CACTUS: return new WorldPoint(1264, 3747, 0);  // Corrected Y coordinate
             default: return null;
         }
     }
@@ -1419,10 +1456,11 @@ public class FarmingContractScript extends Script {
                     4
                 );
             case CACTUS:
-                // Cactus patch - estimated area
+                // Cactus patch in Farming Guild - corrected coordinates
+                // NOTE FOR MASON: The cactus patch is between (1264, 3747) and (1265, 3748)
                 return new Polygon(
-                    new int[]{1263, 1263, 1265, 1265},
-                    new int[]{3745, 3747, 3747, 3745},
+                    new int[]{1264, 1264, 1265, 1265},
+                    new int[]{3747, 3748, 3748, 3747},
                     4
                 );
             default:
@@ -1600,6 +1638,14 @@ public class FarmingContractScript extends Script {
                     ObjectID.FRUIT_TREE_PATCH_WEEDED, ObjectID.FRUIT_TREE_PATCH_WEEDS_1,
                     ObjectID.FRUIT_TREE_PATCH_WEEDS_2, ObjectID.FRUIT_TREE_PATCH_WEEDS_3
                 };
+            case CACTUS:
+                return new Integer[] {
+                    ObjectID.FARMING_CACTUS_PATCH, ObjectID.FARMING_CACTUS_PATCH_2,
+                    ObjectID.CACTUS_PATCH_WEEDED, ObjectID.CACTUS_PATCH_WEEDS_1,
+                    ObjectID.CACTUS_PATCH_WEEDS_2, ObjectID.CACTUS_PATCH_WEEDS_3,
+                    // Note: There are many other cactus IDs for growing/harvestable states
+                    // but these base IDs should help find the patch
+                };
             default:
                 // For other types, we'll rely on area-based search
                 return new Integer[0];
@@ -1641,50 +1687,66 @@ public class FarmingContractScript extends Script {
         // Fallback state inference from actions when FarmingHandler is not available
         if (patch == null) return CropState.EMPTY;
         
-        var comp = Rs2GameObject.convertToObjectComposition(patch, true);
+        // Use ignoreImpostor=false for farming patches to get current state's actions
+        var comp = Rs2GameObject.convertToObjectComposition(patch, false);
         if (comp == null || comp.getActions() == null) return CropState.EMPTY;
         
-        // Check actions to determine state
+        // Log available actions for debugging
+        log.info("inferStateFromActions - Patch ID: {}, Actions: {}", 
+                patch.getId(), Arrays.toString(comp.getActions()));
+        
+        // Collect all non-null actions
+        Set<String> actions = new HashSet<>();
         for (String action : comp.getActions()) {
-            if (action != null) {
-                // Check-health = Tree/fruit tree ready for harvest
-                if (action.equalsIgnoreCase("Check-health") || 
-                    action.equalsIgnoreCase("Check health") || 
-                    action.equalsIgnoreCase("Check")) {
-                    return CropState.UNCHECKED;
-                }
-                
-                // Pick/Harvest = Regular crops ready to harvest
-                if (action.equalsIgnoreCase("Pick") || 
-                    action.equalsIgnoreCase("Harvest") ||
-                    action.equalsIgnoreCase("Pick-from") || 
-                    action.equalsIgnoreCase("Pick-spine")) {
-                    return CropState.HARVESTABLE;
-                }
-                
-                // Chop = Tree stump after check-health
-                if (action.toLowerCase().contains("chop")) {
-                    return CropState.STUMP;
-                }
-                
-                // Clear = Dead plants
-                if (action.equalsIgnoreCase("Clear")) {
-                    return CropState.DEAD;
-                }
-                
-                // Rake = Empty patch with weeds
-                if (action.equalsIgnoreCase("Rake")) {
-                    return CropState.EMPTY;
-                }
-                
-                // Inspect = Empty patch ready to plant
-                if (action.equalsIgnoreCase("Inspect")) {
-                    return CropState.EMPTY;
-                }
+            if (action != null && !action.isEmpty()) {
+                actions.add(action.toLowerCase());
             }
         }
         
-        // Default to growing if no clear action found
+        // Remove "Guide" and "Inspect" as they're always present
+        actions.remove("guide");
+        actions.remove("inspect");
+        
+        // If no actions remain after removing Guide/Inspect, patch is empty
+        if (actions.isEmpty()) {
+            return CropState.EMPTY;
+        }
+        
+        // If only "Rake" remains, patch is empty with weeds
+        if (actions.size() == 1 && actions.contains("rake")) {
+            return CropState.EMPTY;
+        }
+        
+        // Check remaining actions for specific states
+        for (String action : actions) {
+            // Check-health = Tree/fruit tree ready for harvest
+            if (action.equalsIgnoreCase("check-health") || 
+                action.equalsIgnoreCase("check health") || 
+                action.equalsIgnoreCase("check")) {
+                return CropState.UNCHECKED;
+            }
+            
+            // Pick/Harvest = Regular crops ready to harvest
+            if (action.equalsIgnoreCase("pick") || 
+                action.equalsIgnoreCase("harvest") ||
+                action.equalsIgnoreCase("pick-from") || 
+                action.equalsIgnoreCase("pick-spine")) {
+                return CropState.HARVESTABLE;
+            }
+            
+            // Chop = Tree that needs to be removed by NPC (treated as harvestable/ready to clear)
+            if (action.contains("chop")) {
+                // Tree with chop action needs to be cleared by paying NPC
+                return CropState.HARVESTABLE;
+            }
+            
+            // Clear = Something clearable (dead plants, stumps, etc.)
+            if (action.equalsIgnoreCase("clear")) {
+                return CropState.DEAD;  // Using DEAD state for clearable items
+            }
+        }
+        
+        // If we have other actions but none match specific states, patch is growing
         return CropState.GROWING;
     }
     
@@ -1720,7 +1782,7 @@ public class FarmingContractScript extends Script {
             for (FarmingPatch patch : farmingWorld.getTabs().get(tab)) {
                 if (patch.getRegion() != null && 
                     patch.getRegion().getName() != null && 
-                    patch.getRegion().getName().contains("Guild")) {
+                    patch.getRegion().getName().contains("Farming Guild")) {
                     
                     String patchName = patch.getName();
                     if (patchName != null && patchName.contains("North")) {
@@ -1797,7 +1859,19 @@ public class FarmingContractScript extends Script {
         for (FarmingPatch patch : farmingWorld.getTabs().get(tab)) {
             if (patch.getRegion() != null && 
                 patch.getRegion().getName() != null && 
-                patch.getRegion().getName().contains("Guild")) {
+                patch.getRegion().getName().contains("Farming Guild")) {
+                
+                // Special check for CACTUS to avoid getting Hespori patch
+                if (produce.getPatchImplementation() == PatchImplementation.CACTUS) {
+                    // Make sure we get the Cactus patch, not Hespori
+                    if (patch.getName() != null && patch.getName().toLowerCase().contains("cactus")) {
+                        log.info("findFarmingPatch: Found Cactus patch");
+                        return patch;
+                    }
+                    // Skip non-cactus patches in SPECIAL tab
+                    continue;
+                }
+                
                 log.info("findFarmingPatch: Found {} patch", produce.getPatchImplementation());
                 return patch;
             }
