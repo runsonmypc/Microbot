@@ -12,11 +12,11 @@ import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
-public class DismissNpcEvent implements BlockingEvent {
+public class HandleNpcEvent implements BlockingEvent {
 
-    private final EventDismissConfig config;
+    private final EventHandlerConfig config;
 
-    public DismissNpcEvent(EventDismissConfig config) {
+    public HandleNpcEvent(EventHandlerConfig config) {
         this.config = config;
     }
 
@@ -45,12 +45,9 @@ public class DismissNpcEvent implements BlockingEvent {
             Rs2Npc.interact(randomEventNPC, "Dismiss");
             Global.sleepUntil(() -> Rs2Npc.getRandomEventNPC() == null);
             return true;
-        } else if (!Rs2Inventory.isFull()) {
-            Rs2Npc.interact(randomEventNPC, "Talk-to");
-            Rs2Dialogue.sleepUntilHasContinue();
-            Rs2Dialogue.clickContinue();
-            return true;
         }
+        
+        // If we shouldn't dismiss and it's not a lamp event, ignore it
         return false;
     }
     

@@ -6,8 +6,8 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
-@ConfigGroup("EventDismiss")
-public interface EventDismissConfig extends Config {
+@ConfigGroup("EventHandler")
+public interface EventHandlerConfig extends Config {
 
     @ConfigSection(
             name = "Lamp Events",

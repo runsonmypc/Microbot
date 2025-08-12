@@ -10,9 +10,9 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 public class UseLampEvent implements BlockingEvent {
 
-    private final EventDismissConfig config;
+    private final EventHandlerConfig config;
 
-    public UseLampEvent(EventDismissConfig config) {
+    public UseLampEvent(EventHandlerConfig config) {
         this.config = config;
     }
 

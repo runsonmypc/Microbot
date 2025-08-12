@@ -18,32 +18,32 @@ import java.awt.*;
         enabledByDefault = false
 )
 @Slf4j
-public class EventDismissPlugin extends Plugin {
+public class EventHandlerPlugin extends Plugin {
     @Inject
     private ConfigManager configManager;
     @Inject
-    private EventDismissConfig config;
+    private EventHandlerConfig config;
 
-    private DismissNpcEvent dismissNpcEvent;
+    private HandleNpcEvent handleNpcEvent;
     private UseLampEvent useLampEvent;
 
     @Provides
-    EventDismissConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(EventDismissConfig.class);
+    EventHandlerConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(EventHandlerConfig.class);
     }
 
     @Override
     protected void startUp() throws AWTException {
-        dismissNpcEvent = new DismissNpcEvent(config);
+        handleNpcEvent = new HandleNpcEvent(config);
         useLampEvent = new UseLampEvent(config);
-        Microbot.getBlockingEventManager().add(dismissNpcEvent);
+        Microbot.getBlockingEventManager().add(handleNpcEvent);
         Microbot.getBlockingEventManager().add(useLampEvent);
     }
 
     protected void shutDown() {
-        Microbot.getBlockingEventManager().remove(dismissNpcEvent);
+        Microbot.getBlockingEventManager().remove(handleNpcEvent);
         Microbot.getBlockingEventManager().remove(useLampEvent);
-        dismissNpcEvent = null;
+        handleNpcEvent = null;
         useLampEvent = null;
     }
 }
