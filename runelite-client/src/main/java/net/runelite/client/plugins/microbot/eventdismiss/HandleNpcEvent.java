@@ -68,15 +68,11 @@ public class HandleNpcEvent implements BlockingEvent {
         // Talk to the NPC
         Rs2Npc.interact(npc, "Talk-to");
         
-        // Handle dialogue
-        while (Rs2Dialogue.isInDialogue()) {
-            if (Rs2Dialogue.hasContinue()) {
-                Rs2Dialogue.clickContinue();
-                Global.sleep(600, 1200);
-            } else {
-                Global.sleep(300, 600);
-            }
-        }
+        // Continue all dialogue until it fully closes
+        continueDialogueUntilClosed();
+        
+        // Add small delay after dialogue closes
+        Global.sleep(600, 1200);
         
         // Wait for lamp to appear in inventory
         Global.sleepUntil(() -> Rs2Inventory.contains(ItemID.LAMP), 5000);
@@ -101,6 +97,28 @@ public class HandleNpcEvent implements BlockingEvent {
         }
         
         return true;
+    }
+    
+    private void continueDialogueUntilClosed() {
+        // Wait for dialogue to start
+        Rs2Dialogue.sleepUntilInDialogue();
+        
+        // Continue all dialogue until fully closed
+        while (Rs2Dialogue.isInDialogue()) {
+            if (Rs2Dialogue.hasContinue()) {
+                Rs2Dialogue.clickContinue();
+                Global.sleep(600, 1200);
+            } else if (Rs2Dialogue.hasSelectAnOption()) {
+                // Handle any dialogue options if they appear
+                Global.sleep(300, 600);
+            } else {
+                // Small sleep to prevent tight loop
+                Global.sleep(100, 200);
+            }
+        }
+        
+        // Final wait to ensure dialogue is completely closed
+        Rs2Dialogue.sleepUntilNotInDialogue();
     }
     
     private int getSkillWidgetId(Skill skill) {
