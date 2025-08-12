@@ -4,6 +4,7 @@ import net.runelite.api.ItemID;
 import net.runelite.api.Skill;
 import net.runelite.client.plugins.microbot.BlockingEvent;
 import net.runelite.client.plugins.microbot.BlockingEventPriority;
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
@@ -15,6 +16,7 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 public class HandleNpcEvent implements BlockingEvent {
 
     private final EventHandlerConfig config;
+    private boolean hasLoggedInventoryFull = false;
 
     public HandleNpcEvent(EventHandlerConfig config) {
         this.config = config;
@@ -36,6 +38,17 @@ public class HandleNpcEvent implements BlockingEvent {
         
         // Check if this is a lamp event and should be accepted
         if (isLampEvent(npcName) && shouldAcceptLamp(npcName)) {
+            // Check if inventory is full - if so, wait for space
+            if (Rs2Inventory.isFull()) {
+                if (!hasLoggedInventoryFull) {
+                    Microbot.log("Inventory full - waiting for space to accept lamp from " + npcName);
+                    hasLoggedInventoryFull = true;
+                }
+                // Return false to keep checking - event will remain active
+                return false;
+            }
+            // Reset the flag when we can proceed
+            hasLoggedInventoryFull = false;
             return handleLampEvent(randomEventNPC);
         }
         
