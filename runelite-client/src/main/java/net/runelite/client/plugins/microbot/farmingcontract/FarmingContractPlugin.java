@@ -9,6 +9,9 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farmruns.FarmingWorld;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -84,5 +87,32 @@ public class FarmingContractPlugin extends Plugin {
     public void stopPlugin() {
         log.info("Script requested plugin stop - toggling off in menu");
         Microbot.stopPlugin(this);
+    }
+    
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.GAMEMESSAGE) {
+            return;
+        }
+        
+        String msg = event.getMessage().toLowerCase();
+        
+        // Check for contract completion messages
+        // Common messages: "Congratulations, you've completed a farming contract!"
+        // "You have completed the Farming Guild contract."
+        // "Jane will be pleased with your work."
+        if (msg.contains("completed") && (msg.contains("contract") || msg.contains("farming"))) {
+            log.info("Contract completion detected: {}", msg);
+            if (script != null) {
+                script.onContractCompleted();
+            }
+        }
+        // Also check for the reward message
+        else if (msg.contains("jane") && msg.contains("pleased")) {
+            log.info("Contract completion detected (Jane pleased): {}", msg);
+            if (script != null) {
+                script.onContractCompleted();
+            }
+        }
     }
 }

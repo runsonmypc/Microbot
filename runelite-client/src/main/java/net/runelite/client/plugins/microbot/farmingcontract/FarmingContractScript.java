@@ -165,6 +165,9 @@ public class FarmingContractScript extends Script {
     
     private CropState lastKnownCropState = null;  // Track the crop state from CHECK_PATCH
     private boolean harvestingContract = false;  // Track when we're harvesting for contract completion
+    private boolean contractJustCompleted = false;  // Set when contract completion is detected
+    private boolean clearingCompletedContract = false;  // Set when clearing a completed bush/cactus contract
+    private boolean skipSeedPreparation = false;  // Set when patch already has our contract crop
     
     private void handleCheckPatch() {
         if (currentContract == null) {
@@ -193,17 +196,23 @@ public class FarmingContractScript extends Script {
                     plugin.setStatus("Contract still growing - stopping");
                     plugin.stopPlugin();
                 } else {
-                    // Go to PREPARE, which will check what we actually need
-                    log.info("CHECK_PATCH: Moving to PREPARE state");
-                    state = FarmingContractState.PREPARE;
-                    
+                    // Check if we need seeds or if the patch already has our crop
                     if (cropState == CropState.HARVESTABLE || cropState == CropState.UNCHECKED) {
-                        plugin.setStatus("Contract ready to harvest - checking inventory");
-                    } else if (cropState == CropState.DEAD || cropState == CropState.DISEASED) {
-                        plugin.setStatus("Patch needs attention - checking inventory");
+                        log.info("CHECK_PATCH: Contract crop already grown - no seeds needed");
+                        skipSeedPreparation = true;
+                        plugin.setStatus("Contract ready - no seeds needed");
                     } else {
-                        plugin.setStatus("Preparing to plant");
+                        skipSeedPreparation = false;
+                        if (cropState == CropState.DEAD || cropState == CropState.DISEASED) {
+                            plugin.setStatus("Patch needs attention - checking inventory");
+                        } else {
+                            plugin.setStatus("Preparing to plant");
+                        }
                     }
+                    
+                    // Go to PREPARE, which will check what we actually need
+                    log.info("CHECK_PATCH: Moving to PREPARE state (skipSeeds={})", skipSeedPreparation);
+                    state = FarmingContractState.PREPARE;
                 }
             } else {
                 // Can't find patch info, proceed to prepare
@@ -221,15 +230,22 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleGetContract() {
-        if (!isNearJane()) {
-            Rs2Walker.walkTo(JANE_LOCATION);
+        // Reset completion flags when getting a new contract
+        contractJustCompleted = false;
+        clearingCompletedContract = false;
+        skipSeedPreparation = false;
+        
+        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
+        if (jane == null) {
+            // Jane not visible, walk to her location
+            if (Rs2Player.getWorldLocation().distanceTo(JANE_LOCATION) > 10) {
+                Rs2Walker.walkTo(JANE_LOCATION);
+            }
             return;
         }
         
-        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
-        if (jane == null) return;
-        
         // Try Contract first, then Talk-to
+        // Rs2Npc.interact will automatically walk if Jane is not in line of sight
         if (!Rs2Npc.interact(jane, "Contract")) {
             Rs2Npc.interact(jane, "Talk-to");
         }
@@ -288,6 +304,14 @@ public class FarmingContractScript extends Script {
     private void handlePrepare() {
         if (currentContract == null) {
             state = FarmingContractState.CHECK_CONTRACT;
+            return;
+        }
+        
+        // If patch already has our contract crop, skip banking and go straight to farming
+        if (skipSeedPreparation) {
+            log.info("Skipping seed preparation - contract crop already grown");
+            state = FarmingContractState.FARM;
+            skipSeedPreparation = false; // Reset flag
             return;
         }
         
@@ -362,11 +386,7 @@ public class FarmingContractScript extends Script {
         }
         
         // Bank for what we need
-        if (!Rs2Bank.isNearBank(10)) {
-            Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint());
-            return;
-        }
-        
+        // Rs2Bank.openBank() automatically walks to the nearest bank if needed
         if (Rs2Bank.openBank()) {
             Rs2Bank.depositAllExcept("Rake", "Spade", "Seed dibber", "Magic secateurs", "Coins", "Plant cure");
             
@@ -428,6 +448,11 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleFarm() {
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
         if (currentContract == null) {
             state = FarmingContractState.CHECK_CONTRACT;
             return;
@@ -439,41 +464,51 @@ public class FarmingContractScript extends Script {
         // Try to find the patch object first (it might be visible even from a distance)
         GameObject patch = findPatchUsingActions(currentContract);
         
-        // If patch is visible, check its state before walking
-        if (patch != null) {
-            log.info("Patch found for {} at distance {}", currentContract.getName(), 
-                    Rs2Player.getWorldLocation().distanceTo(patch.getWorldLocation()));
-            
-            // Check the actual patch state from its actions
-            CropState actualState = inferStateFromActions(patch);
-            log.info("Patch state from actions: {}", actualState);
-            
-            // If patch is growing, stop immediately without walking
-            if (actualState == CropState.GROWING) {
-                log.error("Patch already has crops growing - cannot plant contract!");
-                plugin.setStatus("Patch occupied - cannot plant " + currentContract.getName());
-                plugin.stopPlugin();
-                return;
+        // If patch is not visible, try to walk closer
+        if (patch == null) {
+            // Try to interact with any patch object at the location - this will auto-walk if needed
+            Integer[] patchIds = getPatchObjectIds(currentContract);
+            for (int patchId : patchIds) {
+                TileObject obj = Rs2GameObject.findObjectById(patchId);
+                if (obj != null && obj.getWorldLocation().equals(patchLocation)) {
+                    // Found patch at location - interact will walk there if needed
+                    log.info("Patch found but not reachable, using interact to walk");
+                    if (!Rs2GameObject.interact(obj, "Inspect", true)) {
+                        // Returns false if walking was initiated
+                        return;
+                    }
+                    // After walking, the patch should be found on next loop
+                    break;
+                }
             }
             
-            // If patch is ready but we're too far, walk to it
-            if (Rs2Player.getWorldLocation().distanceTo(patchLocation) > 10) {
-                log.info("Walking to patch (state: {})", actualState);
-                Rs2Walker.walkTo(patchLocation);
+            // If still no patch, manually walk there
+            if (patch == null) {
+                if (Rs2Player.getWorldLocation().distanceTo(patchLocation) > 10) {
+                    log.info("Patch not found, walking to location");
+                    Rs2Walker.walkTo(patchLocation);
+                } else {
+                    log.warn("Could not find patch for {} despite being close. Player location: {}", 
+                            currentContract.getName(), Rs2Player.getWorldLocation());
+                }
                 return;
             }
-        } else {
-            // Patch not visible, need to walk closer
-            if (Rs2Player.getWorldLocation().distanceTo(patchLocation) > 10) {
-                log.info("Patch not visible, walking to location");
-                Rs2Walker.walkTo(patchLocation);
-                return;
-            } else {
-                // We're close but can't find patch - error
-                log.warn("Could not find patch for {} despite being close. Player location: {}", 
-                        currentContract.getName(), Rs2Player.getWorldLocation());
-                return;
-            }
+        }
+        
+        // Patch is visible - check its state
+        log.info("Patch found for {} at distance {}", currentContract.getName(), 
+                Rs2Player.getWorldLocation().distanceTo(patch.getWorldLocation()));
+        
+        // Check the actual patch state from its actions
+        CropState actualState = inferStateFromActions(patch);
+        log.info("Patch state from actions: {}", actualState);
+        
+        // If patch is growing, stop immediately
+        if (actualState == CropState.GROWING) {
+            log.error("Patch already has crops growing - cannot plant contract!");
+            plugin.setStatus("Patch occupied - cannot plant " + currentContract.getName());
+            plugin.stopPlugin();
+            return;
         }
         
         // First, infer state from actual patch actions (most reliable for current state)
@@ -555,6 +590,23 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleEmptyPatch(GameObject patch) {
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
+        // Don't plant if we just completed a contract - go get a new one instead
+        if (contractJustCompleted || clearingCompletedContract) {
+            log.info("Contract completed, going to get new contract instead of planting");
+            // Clear the contract and flags
+            currentContract = null;
+            contractJustCompleted = false;
+            clearingCompletedContract = false;
+            saveContract();
+            state = FarmingContractState.COMPLETE;
+            return;
+        }
+        
         // The patch state has already been properly determined by inferStateFromActions
         // which correctly handles the fact that "Inspect" is always present on all patches
         
@@ -586,7 +638,12 @@ public class FarmingContractScript extends Script {
         // Attempt to plant seeds
         Rs2Inventory.use(seedId);
         sleep(100, 200);
-        Rs2GameObject.interact(patch, "Use");
+        if (!Rs2GameObject.interact(patch, "Use", true)) {
+            // Can't reach patch, walk to it
+            log.info("Can't reach patch to plant, walking to location");
+            Rs2Walker.walkTo(patch.getWorldLocation());
+            return;
+        }
         Rs2Player.waitForAnimation(3000);
         
         // Verify seeds were actually planted
@@ -636,7 +693,12 @@ public class FarmingContractScript extends Script {
             for (String action : comp.getActions()) {
                 if (action != null && action.toLowerCase().contains("rake")) {
                     log.info("Weeds detected - raking patch using action: {}", action);
-                    Rs2GameObject.interact(patch, action);
+                    if (!Rs2GameObject.interact(patch, action, true)) {
+                        // Interact failed - walk to patch location manually
+                        log.info("Can't reach patch, walking to location");
+                        Rs2Walker.walkTo(patch.getWorldLocation());
+                        return false;  // Return false because weeds weren't cleared yet
+                    }
                     
                     // Wait for raking to start
                     sleepUntil(() -> Rs2Player.isAnimating(), 2000);
@@ -694,7 +756,12 @@ public class FarmingContractScript extends Script {
         
         Rs2Inventory.use(compost);
         sleep(100, 200);
-        Rs2GameObject.interact(patch, "Use");
+        if (!Rs2GameObject.interact(patch, "Use", true)) {
+            // Can't reach patch, walk to it
+            log.info("Can't reach patch to apply compost, walking to location");
+            Rs2Walker.walkTo(patch.getWorldLocation());
+            return;
+        }
         Rs2Player.waitForAnimation(3000);
         
         // Verify compost was used
@@ -709,6 +776,11 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleHarvestablePatch(GameObject patch) {
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
         // Check if inventory is full before starting
         if (Rs2Inventory.isFull()) {
             log.info("Inventory full before harvesting - attempting to note crops");
@@ -733,7 +805,10 @@ public class FarmingContractScript extends Script {
         }
         
         log.info("Starting harvest of {} using action: {}", currentContract.getName(), action);
-        Rs2GameObject.interact(patch, action);
+        if (!Rs2GameObject.interact(patch, action, true)) {
+            // Walking to patch, will retry on next loop
+            return;
+        }
         
         // Wait for harvesting to start
         sleepUntil(() -> Rs2Player.isAnimating(), 2000);
@@ -871,15 +946,25 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleUncheckedPatch(GameObject patch) {
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
         // Check health first (for trees, bushes, etc.)
         log.info("Performing check-health on {} patch", currentContract.getPatchImplementation());
-        Rs2GameObject.interact(patch, "Check-health");
+        if (!Rs2GameObject.interact(patch, "Check-health", true)) {
+            // Walking to patch, will retry on next loop
+            return;
+        }
         Rs2Inventory.waitForInventoryChanges(5000);
         
         // For bushes and cacti, check-health completes the contract but we need to continue clearing
         if (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
             currentContract.getPatchImplementation() == PatchImplementation.CACTUS) {
             log.info("Bush/Cactus contract complete after check-health, but patch needs full clearing");
+            // Set flag to continue clearing after contract completion
+            clearingCompletedContract = true;
             // Don't set state to COMPLETE - let the patch continue to be processed
             // The patch will go through HARVESTABLE -> DEAD -> EMPTY states
             // We'll handle it in subsequent loops
@@ -944,7 +1029,15 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleDeadPatch(GameObject patch) {
-        Rs2GameObject.interact(patch, "Clear");
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
+        if (!Rs2GameObject.interact(patch, "Clear", true)) {
+            // Walking to patch, will retry on next loop
+            return;
+        }
         sleepUntil(() -> Rs2Player.isAnimating() || Rs2Dialogue.isInDialogue(), 3000);
         
         // Handle confirmation dialogue for bushes and cacti
@@ -982,9 +1075,14 @@ public class FarmingContractScript extends Script {
     }
     
     private void handleDiseasedPatch(GameObject patch) {
+        // Don't take actions while moving or animating
+        if (Rs2Player.isAnimating() || Rs2Player.isWalking()) {
+            return;
+        }
+        
         if (Rs2Inventory.contains("Plant cure")) {
             Rs2Inventory.use("Plant cure");
-            Rs2GameObject.interact(patch, "Use");
+            Rs2GameObject.interact(patch, "Use", true);
             Rs2Player.waitForAnimation(3000);
         } else {
             log.warn("Patch is diseased but no plant cure available");
@@ -1073,7 +1171,10 @@ public class FarmingContractScript extends Script {
     
     private void handleStumpPatch(GameObject patch) {
         // Tree stump needs to be chopped down (this is for actual stumps after chopping)
-        Rs2GameObject.interact(patch, "Chop");
+        if (!Rs2GameObject.interact(patch, "Chop", true)) {
+            // Walking to patch, will retry on next loop
+            return;
+        }
         Rs2Player.waitForAnimation(5000);
         
         // For farming contracts, we already got the XP from check-health
@@ -1091,14 +1192,16 @@ public class FarmingContractScript extends Script {
             saveContract();
         }
         
-        if (!isNearJane()) {
-            Rs2Walker.walkTo(JANE_LOCATION);
+        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
+        if (jane == null) {
+            // Jane not visible, walk to her location
+            if (Rs2Player.getWorldLocation().distanceTo(JANE_LOCATION) > 10) {
+                Rs2Walker.walkTo(JANE_LOCATION);
+            }
             return;
         }
         
-        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
-        if (jane == null) return;
-        
+        // Rs2Npc.interact will automatically walk if Jane is not in line of sight
         if (!Rs2Npc.interact(jane, "Contract")) {
             Rs2Npc.interact(jane, "Talk-to");
         }
@@ -1187,9 +1290,16 @@ public class FarmingContractScript extends Script {
             
             if (Rs2Bank.openBank()) {
                 // Deposit everything except seed packs and essential tools
-                Rs2Bank.depositAllExcept("Seed pack", "Spade", "Rake", "Seed dibber");
+                Rs2Bank.depositAllExcept("Seed pack", "Spade", "Rake", "Seed dibber", "Magic secateurs");
                 Rs2Bank.closeBank();
                 sleep(300);
+                
+                // Now check if we have enough space after banking
+                emptySlots = Rs2Inventory.emptySlotCount();
+                if (emptySlots < 10) {
+                    log.warn("Still not enough space after banking. Need to bank more items.");
+                    return;  // Will retry on next loop
+                }
             }
         }
         
@@ -1226,9 +1336,6 @@ public class FarmingContractScript extends Script {
     }
     
     // Helper methods
-    private boolean isNearJane() {
-        return Rs2Player.getWorldLocation().distanceTo(JANE_LOCATION) <= 10;
-    }
     
     private String getContractTier() {
         int level = Rs2Player.getRealSkillLevel(Skill.FARMING);
@@ -1751,11 +1858,8 @@ public class FarmingContractScript extends Script {
     }
     
     private boolean isContractComplete() {
-        // We no longer use this method for completion detection
-        // Instead, we detect completion by checking if the patch becomes empty
-        // after harvesting contract crops (handled in handleHarvestablePatch)
-        // or after clearing trees (handled in handleUncheckedPatch)
-        return false;
+        // Contract is complete if it was detected via chat message
+        return contractJustCompleted;
     }
     
     private FarmingPatch findFarmingPatch(Produce produce) {
@@ -1902,6 +2006,23 @@ public class FarmingContractScript extends Script {
                 return Tab.SPECIAL;
             default:
                 return null;
+        }
+    }
+    
+    /**
+     * Called when contract completion is detected via chat message.
+     * This is called from the plugin when it detects the completion message.
+     */
+    public void onContractCompleted() {
+        log.info("Contract completion detected via chat message");
+        contractJustCompleted = true;
+        
+        // If we're working with bushes/cacti that need full clearing after check-health
+        if (currentContract != null && 
+            (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+             currentContract.getPatchImplementation() == PatchImplementation.CACTUS)) {
+            clearingCompletedContract = true;
+            log.info("Bush/Cactus contract - will continue clearing before getting new contract");
         }
     }
 }
