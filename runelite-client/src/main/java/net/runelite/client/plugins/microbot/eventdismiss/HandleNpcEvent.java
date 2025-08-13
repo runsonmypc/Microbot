@@ -17,6 +17,9 @@ public class HandleNpcEvent implements BlockingEvent {
 
     private final EventHandlerConfig config;
     private boolean hasLoggedInventoryFull = false;
+    private boolean waitingForLamp = false;
+    private int lampWaitCounter = 0;
+    private static final int MAX_LAMP_WAIT_TICKS = 50; // ~30 seconds
 
     public HandleNpcEvent(EventHandlerConfig config) {
         this.config = config;
@@ -24,12 +27,41 @@ public class HandleNpcEvent implements BlockingEvent {
 
     @Override
     public boolean validate() {
+        // Keep validating if we're waiting for a lamp to appear
+        if (waitingForLamp) {
+            return true;
+        }
         Rs2NpcModel randomEventNPC = Rs2Npc.getRandomEventNPC();
         return Rs2Npc.hasLineOfSight(randomEventNPC);
     }
 
     @Override
     public boolean execute() {
+        // If we're waiting for a lamp, try to use it
+        if (waitingForLamp) {
+            lampWaitCounter++;
+            
+            // Check for timeout
+            if (lampWaitCounter > MAX_LAMP_WAIT_TICKS) {
+                Microbot.log("Lamp wait timeout - giving up");
+                waitingForLamp = false;
+                lampWaitCounter = 0;
+                return true; // Mark as handled to stop checking
+            }
+            
+            // Check if lamp appeared
+            if (Rs2Inventory.contains(ItemID.LAMP)) {
+                Microbot.log("Lamp found in inventory - using it");
+                useLamp();
+                waitingForLamp = false;
+                lampWaitCounter = 0;
+                return true; // Successfully handled
+            }
+            
+            // Still waiting for lamp
+            return false;
+        }
+        
         Rs2NpcModel randomEventNPC = Rs2Npc.getRandomEventNPC();
         String npcName = randomEventNPC.getName();
         
@@ -87,29 +119,31 @@ public class HandleNpcEvent implements BlockingEvent {
         // Add small delay after dialogue closes
         Global.sleep(600, 1200);
         
-        // Wait for lamp to appear in inventory
-        Global.sleepUntil(() -> Rs2Inventory.contains(ItemID.LAMP), 5000);
+        // Set flag that we're waiting for lamp
+        Microbot.log("Dialogue complete - waiting for lamp to appear");
+        waitingForLamp = true;
+        lampWaitCounter = 0;
         
-        // Use the lamp
-        if (Rs2Inventory.contains(ItemID.LAMP)) {
-            Rs2Inventory.interact(ItemID.LAMP, "Rub");
-            
-            // Wait for lamp interface to open
-            Global.sleepUntil(() -> Rs2Widget.isWidgetVisible(240, 0), 3000);
-            
-            // Select skill and confirm
-            if (Rs2Widget.isWidgetVisible(240, 0)) {
-                int skillWidgetId = getSkillWidgetId(config.lampSkill());
-                if (skillWidgetId != -1) {
-                    Rs2Widget.clickWidget(240, skillWidgetId);
-                    Global.sleep(600, 1200);
-                    Rs2Widget.clickWidget(240, 26); // Confirm button
-                    Global.sleep(600, 1200);
-                }
+        // Don't mark as complete yet - we still need to use the lamp
+        return false;
+    }
+    
+    private void useLamp() {
+        Rs2Inventory.interact(ItemID.LAMP, "Rub");
+        
+        // Wait for lamp interface to open
+        Global.sleepUntil(() -> Rs2Widget.isWidgetVisible(240, 0), 3000);
+        
+        // Select skill and confirm
+        if (Rs2Widget.isWidgetVisible(240, 0)) {
+            int skillWidgetId = getSkillWidgetId(config.lampSkill());
+            if (skillWidgetId != -1) {
+                Rs2Widget.clickWidget(240, skillWidgetId);
+                Global.sleep(600, 1200);
+                Rs2Widget.clickWidget(240, 26); // Confirm button
+                Global.sleep(600, 1200);
             }
         }
-        
-        return true;
     }
     
     private void continueDialogueUntilClosed() {
