@@ -116,15 +116,32 @@ public class HandleNpcEvent implements BlockingEvent {
         // Continue all dialogue until it fully closes
         continueDialogueUntilClosed();
         
-        // Add small delay after dialogue closes
-        Global.sleep(600, 1200);
+        // Check if lamp appeared immediately after dialogue
+        if (Rs2Inventory.contains(ItemID.LAMP)) {
+            Microbot.log("Lamp received immediately - using it");
+            Global.sleep(600, 1200); // Small delay before using
+            useLamp();
+            return true; // Mark as complete
+        }
         
-        // Set flag that we're waiting for lamp
+        // Set flag that we're waiting for lamp BEFORE sleeping
         Microbot.log("Dialogue complete - waiting for lamp to appear");
         waitingForLamp = true;
         lampWaitCounter = 0;
         
-        // Don't mark as complete yet - we still need to use the lamp
+        // Add small delay after dialogue closes
+        Global.sleep(600, 1200);
+        
+        // Check again after the delay
+        if (Rs2Inventory.contains(ItemID.LAMP)) {
+            Microbot.log("Lamp appeared during delay - using it");
+            useLamp();
+            waitingForLamp = false;
+            lampWaitCounter = 0;
+            return true; // Mark as complete
+        }
+        
+        // Don't mark as complete yet - we still need to wait for the lamp
         return false;
     }
     
