@@ -313,6 +313,10 @@ public class FarmingContractScript extends Script {
             return;
         }
         
+        // First, always handle any seed packs we might have (from previous rewards)
+        // This should happen even if we're skipping seed preparation
+        handleSeedPacks();
+        
         // If patch already has our contract crop, check if we have tools for harvesting
         if (skipSeedPreparation) {
             log.info("Contract crop already grown - checking if we have harvesting tools");
@@ -321,35 +325,60 @@ public class FarmingContractScript extends Script {
             boolean hasSpade = Rs2Inventory.contains("Spade");
             boolean hasSecateurs = Rs2Inventory.contains("Magic secateurs");
             
-            // For herb contracts, we NEED a spade for harvesting
-            if (lastKnownCropState == CropState.HARVESTABLE && 
-                currentContract.getPatchImplementation() == PatchImplementation.HERB) {
-                
-                if (hasSpade) {
-                    // We have the required tool, can proceed
-                    if (!hasSecateurs) {
-                        log.warn("No magic secateurs for herb harvesting - lower yield expected");
+            // Check if we need tools for harvesting/clearing
+            boolean needsTools = false;
+            PatchImplementation patchType = currentContract.getPatchImplementation();
+            
+            if (lastKnownCropState == CropState.HARVESTABLE) {
+                // HERB patches need spade for harvesting
+                // BUSH/CACTUS patches need spade for clearing after harvest
+                if (patchType == PatchImplementation.HERB ||
+                    patchType == PatchImplementation.BUSH ||
+                    patchType == PatchImplementation.CACTUS) {
+                    
+                    if (!hasSpade) {
+                        needsTools = true;
+                        log.info("Need spade for {}: {} harvesting/clearing", 
+                                patchType, currentContract.getName());
                     }
-                    log.info("Have required tools for herb harvesting - proceeding to FARM");
-                    state = FarmingContractState.FARM;
-                    skipSeedPreparation = false; // Reset flag
-                    return;
-                } else {
-                    // Need to get spade first
-                    log.info("Need spade for herb harvesting - continuing to banking");
-                    skipSeedPreparation = false; // Reset flag and continue to prepare tools
+                    
+                    // Warn about secateurs for better yield
+                    if (!hasSecateurs && (patchType == PatchImplementation.HERB || 
+                                          patchType == PatchImplementation.BUSH)) {
+                        log.warn("No magic secateurs for {} - lower yield expected", patchType);
+                    }
                 }
+            } else if (lastKnownCropState == CropState.UNCHECKED) {
+                // UNCHECKED state for bush/cactus also needs spade for clearing after check-health
+                if (patchType == PatchImplementation.BUSH ||
+                    patchType == PatchImplementation.CACTUS) {
+                    
+                    if (!hasSpade) {
+                        needsTools = true;
+                        log.info("Need spade for {}: {} clearing after check-health", 
+                                patchType, currentContract.getName());
+                    }
+                }
+            } else if (lastKnownCropState == CropState.DEAD) {
+                // Dead patches always need clearing with spade
+                if (!hasSpade) {
+                    needsTools = true;
+                    log.info("Need spade for clearing dead {}", currentContract.getName());
+                }
+            }
+            
+            if (needsTools) {
+                // Need to get tools first
+                log.info("Missing required tools - continuing to banking");
+                skipSeedPreparation = false; // Reset flag and continue to prepare tools
             } else {
-                // For non-herb contracts or non-harvestable states, go straight to farm
-                log.info("Skipping seed preparation - going to FARM");
+                // Have all required tools, can proceed
+                log.info("Have required tools - proceeding to FARM");
                 state = FarmingContractState.FARM;
                 skipSeedPreparation = false; // Reset flag
                 return;
             }
         }
-        
-        // First, handle any seed packs we might have before banking
-        handleSeedPacks();
         
         // Determine what we need based on the last known crop state
         boolean needsHarvesting = (lastKnownCropState == CropState.HARVESTABLE);
@@ -475,7 +504,16 @@ public class FarmingContractScript extends Script {
         // Bank for what we need
         // Rs2Bank.openBank() automatically walks to the nearest bank if needed
         if (Rs2Bank.openBank()) {
-            Rs2Bank.depositAllExcept("Rake", "Spade", "Seed dibber", "Magic secateurs", "Coins", "Plant cure");
+            // Only keep coins for tree/fruit tree contracts that need clearing
+            boolean needsCoins = (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
+                                 currentContract.getPatchImplementation() == PatchImplementation.FRUIT_TREE) &&
+                                (needsHarvesting || needsChecking);
+            
+            if (needsCoins) {
+                Rs2Bank.depositAllExcept("Rake", "Spade", "Seed dibber", "Magic secateurs", "Coins", "Plant cure");
+            } else {
+                Rs2Bank.depositAllExcept("Rake", "Spade", "Seed dibber", "Magic secateurs", "Plant cure");
+            }
             
             // Get only what we need - use withdrawX to ensure we get exactly 1
             if (!hasSpade && Rs2Bank.hasBankItem("Spade", 1)) {
@@ -544,10 +582,12 @@ public class FarmingContractScript extends Script {
             
             // For tree contracts, ensure we have coins for clearing
             // We need coins for both harvesting and checking (since check-health leads to clearing)
-            if ((needsHarvesting || needsChecking) && (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
-                currentContract.getPatchImplementation() == PatchImplementation.FRUIT_TREE)) {
+            if ((needsHarvesting || needsChecking) && 
+                (currentContract.getPatchImplementation() == PatchImplementation.TREE ||
+                 currentContract.getPatchImplementation() == PatchImplementation.FRUIT_TREE)) {
                 if (Rs2Inventory.count("Coins") < 200) {
                     Rs2Bank.withdrawX("Coins", 200);
+                    log.info("Withdrew 200 coins for tree clearing");
                 }
             }
             
@@ -1173,6 +1213,7 @@ public class FarmingContractScript extends Script {
         // For bushes/cacti that have already completed their contract
         // Check if the patch is now empty and the contract is done
         if (currentContract != null && 
+            clearingCompletedContract &&  // Only if we're clearing after contract completion
             (currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
              currentContract.getPatchImplementation() == PatchImplementation.CACTUS)) {
             
