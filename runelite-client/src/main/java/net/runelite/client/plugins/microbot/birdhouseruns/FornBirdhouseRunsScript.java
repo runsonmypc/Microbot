@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.birdhouseruns;
 
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import static net.runelite.client.plugins.microbot.birdhouseruns.FornBirdhouseRunsInfo.*;
 
+@Slf4j
 public class FornBirdhouseRunsScript extends Script {
     private static final WorldPoint birdhouseLocation1 = new WorldPoint(3763, 3755, 0);
     private static final WorldPoint birdhouseLocation2 = new WorldPoint(3768, 3761, 0);
@@ -56,7 +58,8 @@ public class FornBirdhouseRunsScript extends Script {
                 if (!initialized) {
                     if (Rs2Player.getQuestState(Quest.BONE_VOYAGE) != QuestState.FINISHED) {
                         Microbot.log("You need to finish the quest 'BONE VOYAGE' to use this script");
-                        Microbot.showMessage("Birdhouse run failed, you need to finish the quest 'BONE VOYAGE'");
+                        log.error("Birdhouse run failed, you need to finish the quest 'BONE VOYAGE'");
+                        plugin.reportFinished("Birdhouse run failed, you need to finish the quest 'BONE VOYAGE'", false);
                         this.shutdown();
                         return;
                     }
@@ -70,7 +73,8 @@ public class FornBirdhouseRunsScript extends Script {
                                 Rs2Walker.walkTo(Rs2Bank.getNearestBank().getWorldPoint(), 20);
                                 if (!inventorySetup.loadEquipment() || !inventorySetup.loadInventory()) {
                                     Microbot.log("Failed to load inventory setup");
-                                    Microbot.showMessage("Birdhouse run failed to load inventory setup");
+                                    log.error("Birdhouse run failed to load inventory setup");
+                                    plugin.reportFinished("Birdhouse run failed to load inventory setup", false);
                                     this.shutdown();
                                     return;
                                 }
@@ -78,15 +82,17 @@ public class FornBirdhouseRunsScript extends Script {
                             }
                         } else {
                             Microbot.log("Failed to load inventory, inventory setup not found: " + config.inventorySetup());
-                            Microbot.showMessage("Birdhouse run failed to load inventory setup");
+                            log.error("Birdhouse run failed to load inventory setup");
+                            plugin.reportFinished("Birdhouse run failed to load inventory setup", false);
                             this.shutdown();
                             return;
                         }
                     } else {
                         // Auto bank withdrawal
                         if (!setupManualInventory()) {
-                            Microbot.log("Failed to setup inventory: " + setupErrorMessage);  
-                            Microbot.showMessage("Birdhouse run failed: " + setupErrorMessage);
+                            Microbot.log("Failed to setup inventory: " + setupErrorMessage);
+                            log.error("Birdhouse run failed: " + setupErrorMessage);
+                            plugin.reportFinished("Birdhouse run failed: " + setupErrorMessage, false);
                             this.shutdown();
                             return;
                         }
