@@ -284,6 +284,9 @@ public class FarmingContractScript extends Script {
                     currentContract = findProduce(contractName);
                     if (currentContract != null) {
                         log.info("Got contract: {}", currentContract.getName());
+                        // Clear any previous contract state
+                        lastKnownCropState = null;
+                        skipSeedPreparation = false;
                         saveContract();
                         break; // Exit immediately - dialogue will close when we walk away
                     }
@@ -1312,9 +1315,13 @@ public class FarmingContractScript extends Script {
         // Handle seed packs if we have any (from this or previous rewards)
         handleSeedPacks();
         
-        // After completing and getting new contract, go prepare and plant it
+        // After completing and getting new contract, check the patch first
         if (currentContract != null) {
-            state = FarmingContractState.PREPARE;
+            // Clear previous contract's state
+            lastKnownCropState = null;
+            skipSeedPreparation = false;
+            // Always check patch state for new contract
+            state = FarmingContractState.CHECK_PATCH;
         } else {
             state = FarmingContractState.GET_CONTRACT;
         }
@@ -2075,6 +2082,10 @@ public class FarmingContractScript extends Script {
     public void onContractCompleted() {
         log.info("Contract completion detected via chat message");
         contractJustCompleted = true;
+        
+        // Clear previous contract state to ensure clean state for next contract
+        lastKnownCropState = null;
+        skipSeedPreparation = false;
         
         // If we're working with bushes/cacti that need full clearing after check-health
         if (currentContract != null && 
