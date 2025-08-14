@@ -7,5 +7,6 @@ public enum FarmingContractState {
     GET_CONTRACT,       // Get a new contract from Jane
     PREPARE,           // Bank for seeds and tools
     FARM,              // Handle the farming patch
-    COMPLETE           // Turn in completed contract
+    COMPLETE,          // Turn in completed contract
+    REQUEST_EASIER     // Request an easier contract from Jane when seeds unavailable
 }

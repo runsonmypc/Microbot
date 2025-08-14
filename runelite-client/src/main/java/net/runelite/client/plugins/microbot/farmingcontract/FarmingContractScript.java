@@ -109,6 +109,9 @@ public class FarmingContractScript extends Script {
                     case COMPLETE:
                         handleComplete();
                         break;
+                    case REQUEST_EASIER:
+                        handleRequestEasier();
+                        break;
                 }
                 
                 // Log state transitions
@@ -503,12 +506,24 @@ public class FarmingContractScript extends Script {
                             Rs2Bank.withdrawX(config.compostType().toString(), 1);
                         }
                     } else {
-                        // No seeds in bank - stop the plugin
-                        log.error("No seeds available in bank for contract: " + currentContract.getName());
-                        plugin.setStatus("No seeds in bank for " + currentContract.getName() + " - stopping");
-                        Rs2Bank.closeBank();
-                        plugin.stopPlugin();
-                        return;
+                        // No seeds in bank - check if we should try to downgrade
+                        log.info("No seeds available in bank for contract: " + currentContract.getName());
+                        
+                        if (config.autoDowngrade()) {
+                            // Try to get an easier contract
+                            log.info("Auto-downgrade enabled, requesting easier contract");
+                            plugin.setStatus("No seeds for " + currentContract.getName() + " - requesting easier contract");
+                            Rs2Bank.closeBank();
+                            state = FarmingContractState.REQUEST_EASIER;
+                            return;
+                        } else {
+                            // Auto-downgrade disabled, stop the plugin
+                            log.info("Auto-downgrade disabled, stopping plugin");
+                            plugin.setStatus("No seeds in bank for " + currentContract.getName() + " - stopping");
+                            Rs2Bank.closeBank();
+                            plugin.stopPlugin();
+                            return;
+                        }
                     }
                 }
             }
@@ -971,11 +986,13 @@ public class FarmingContractScript extends Script {
                 }
             }
             
-            // If patch is now empty, we've completed the contract
+            // If patch is now empty, we've finished harvesting
             if (newState == CropState.EMPTY) {
-                log.info("Patch cleared after harvesting contract crop - contract complete!");
-                state = FarmingContractState.COMPLETE;
+                log.info("Patch cleared after harvesting");
+                // Don't automatically assume contract is complete - wait for chat message
+                // The onContractCompleted() method will handle the transition to COMPLETE
                 harvestingContract = false;
+                // Stay in FARM state - will check patch again and plant if needed
                 return;
             }
         }
@@ -1358,6 +1375,131 @@ public class FarmingContractScript extends Script {
             state = FarmingContractState.CHECK_PATCH;
         } else {
             state = FarmingContractState.GET_CONTRACT;
+        }
+    }
+    
+    /**
+     * Handles requesting an easier contract from Jane when we don't have the required seeds.
+     * This assumes we already have a contract and need to replace it with an easier one.
+     */
+    private void handleRequestEasier() {
+        plugin.setStatus("Requesting easier contract");
+        
+        // First, make sure we're at Jane
+        NPC jane = Rs2Npc.getNpcs("Guildmaster Jane").findFirst().orElse(null);
+        if (jane == null) {
+            log.info("Jane not found, walking to her location");
+            Rs2Walker.walkTo(JANE_LOCATION);
+            return;
+        }
+        
+        // Use "Contract" action to get contract options
+        Rs2Npc.interact(jane, "Contract");
+        
+        // Wait for walking to complete if needed
+        Rs2Player.waitForWalking();
+        
+        // Wait for dialogue to open
+        if (!sleepUntil(() -> Rs2Dialogue.isInDialogue(), 3000)) {
+            log.info("Dialogue didn't open after Contract interaction, will retry");
+            return;
+        }
+        
+        boolean foundEasierOption = false;
+        boolean clickedEasierOption = false;
+        boolean confirmedEasierContract = false;
+        boolean gotNewContract = false;
+        
+        // Handle dialogue - continue until we get options or parse a new contract
+        while (Rs2Dialogue.isInDialogue()) {
+            // If we have dialogue options, look for the easier contract option
+            if (Rs2Dialogue.hasSelectAnOption()) {
+                // First, look for the initial easier contract option
+                if (!clickedEasierOption) {
+                    String[] easierOptions = {
+                        "Do you have anything easier?",
+                        "anything easier",
+                        "easier"
+                    };
+                    
+                    for (String option : easierOptions) {
+                        if (Rs2Dialogue.hasDialogueOption(option)) {
+                            log.info("Found easier contract option: {}", option);
+                            foundEasierOption = true;
+                            Rs2Dialogue.clickOption(option);
+                            clickedEasierOption = true;
+                            sleep(100);
+                            break;
+                        }
+                    }
+                    
+                    if (!foundEasierOption) {
+                        // No easier option available - we must be on Easy already
+                        log.info("No easier contract option found - already on easiest tier");
+                        // Just continue through the dialogue to exit
+                        Rs2Dialogue.clickContinue();
+                    }
+                } 
+                // After clicking easier option, look for confirmation
+                else if (clickedEasierOption && !confirmedEasierContract) {
+                    // Look for the confirmation option: "Yes please."
+                    if (Rs2Dialogue.hasDialogueOption("Yes please.") || Rs2Dialogue.hasDialogueOption("Yes please")) {
+                        log.info("Confirming easier contract request");
+                        Rs2Dialogue.clickOption("Yes please");
+                        confirmedEasierContract = true;
+                        sleep(600);
+                        // Need to continue once more after confirmation to get the contract
+                        Rs2Dialogue.clickContinue();
+                        sleep(100);
+                    } else {
+                        // Continue if no Yes option yet
+                        Rs2Dialogue.clickContinue();
+                    }
+                }
+                continue;
+            }
+            
+            // Only parse new contract AFTER we've confirmed the easier contract request
+            if (confirmedEasierContract && !gotNewContract) {
+                String text = Rs2Dialogue.getDialogueText();
+                if (text != null && !text.isEmpty()) {
+                    // Try to parse the new contract
+                    Matcher m = CONTRACT_PATTERN.matcher(text);
+                    if (m.find()) {
+                        String contractName = m.group(1).trim();
+                        Produce newContract = findProduce(contractName);
+                        if (newContract != null && !newContract.equals(currentContract)) {
+                            log.info("Got new easier contract: {}", newContract.getName());
+                            currentContract = newContract;
+                            // Clear any previous contract state
+                            lastKnownCropState = null;
+                            skipSeedPreparation = false;
+                            saveContract();
+                            gotNewContract = true;
+                            // Don't break - continue clicking through remaining dialogue
+                        }
+                    }
+                }
+            }
+            
+            // Continue dialogue
+            Rs2Dialogue.clickContinue();
+            sleep(100);
+        }
+        
+        // After dialogue closes, determine what to do
+        if (gotNewContract) {
+            // Successfully got a new contract, check the patch
+            log.info("Got new contract: {}, moving to CHECK_PATCH", currentContract.getName());
+            state = FarmingContractState.CHECK_PATCH;
+        } else if (!foundEasierOption) {
+            // Couldn't find easier option - we're already on Easy tier
+            log.info("Already on easiest tier, cannot downgrade further - stopping plugin");
+            plugin.setStatus("Already on Easy tier with no seeds - stopping");
+            plugin.stopPlugin();
+        } else {
+            // Something went wrong, try again
+            log.warn("Failed to get new contract from Jane despite finding option");
         }
     }
     
