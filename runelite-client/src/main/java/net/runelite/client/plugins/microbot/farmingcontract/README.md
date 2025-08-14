@@ -150,7 +150,8 @@ The plugin knows all Farming Guild patch locations:
 
 Recent improvements include:
 - Added auto-downgrade feature for unavailable seeds/saplings
-- Fixed bush/cactus clearing to ensure spade is obtained
+- Fixed bush/cactus/herb harvesting to ensure spade is obtained when patch already has harvestable crops
+- Fixed seed pack opening to always occur, even when skipping seed preparation for existing crops
 - Fixed state persistence between contracts preventing stale patch states
 - Fixed spam clicking during movement
 - Added chat-based contract completion detection
