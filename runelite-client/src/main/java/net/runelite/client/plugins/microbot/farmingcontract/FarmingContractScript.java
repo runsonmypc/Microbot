@@ -307,12 +307,39 @@ public class FarmingContractScript extends Script {
             return;
         }
         
-        // If patch already has our contract crop, skip banking and go straight to farming
+        // If patch already has our contract crop, check if we have tools for harvesting
         if (skipSeedPreparation) {
-            log.info("Skipping seed preparation - contract crop already grown");
-            state = FarmingContractState.FARM;
-            skipSeedPreparation = false; // Reset flag
-            return;
+            log.info("Contract crop already grown - checking if we have harvesting tools");
+            
+            // Check what tools we have
+            boolean hasSpade = Rs2Inventory.contains("Spade");
+            boolean hasSecateurs = Rs2Inventory.contains("Magic secateurs");
+            
+            // For herb contracts, we NEED a spade for harvesting
+            if (lastKnownCropState == CropState.HARVESTABLE && 
+                currentContract.getPatchImplementation() == PatchImplementation.HERB) {
+                
+                if (hasSpade) {
+                    // We have the required tool, can proceed
+                    if (!hasSecateurs) {
+                        log.warn("No magic secateurs for herb harvesting - lower yield expected");
+                    }
+                    log.info("Have required tools for herb harvesting - proceeding to FARM");
+                    state = FarmingContractState.FARM;
+                    skipSeedPreparation = false; // Reset flag
+                    return;
+                } else {
+                    // Need to get spade first
+                    log.info("Need spade for herb harvesting - continuing to banking");
+                    skipSeedPreparation = false; // Reset flag and continue to prepare tools
+                }
+            } else {
+                // For non-herb contracts or non-harvestable states, go straight to farm
+                log.info("Skipping seed preparation - going to FARM");
+                state = FarmingContractState.FARM;
+                skipSeedPreparation = false; // Reset flag
+                return;
+            }
         }
         
         // First, handle any seed packs we might have before banking
@@ -331,6 +358,7 @@ public class FarmingContractScript extends Script {
         boolean hasRake = Rs2Inventory.contains("Rake");
         boolean hasDibber = Rs2Inventory.contains("Seed dibber");
         boolean hasPlantCure = Rs2Inventory.contains("Plant cure");
+        boolean hasSecateurs = Rs2Inventory.contains("Magic secateurs");
         
         // Get seed ID early since we'll need it for multiple checks
         int seedId = getSeedId(currentContract);
@@ -352,12 +380,31 @@ public class FarmingContractScript extends Script {
         }
         
         if (needsHarvesting) {
-            // For harvesting, we also need planting items ready for after
-            boolean hasPlantingItems = hasSpade && hasRake && hasDibber && Rs2Inventory.contains(seedId);
-            if (hasPlantingItems) {
-                log.info("Ready to harvest and have planting items ready");
-                state = FarmingContractState.FARM;
-                return;
+            // For harvesting contracts, we just need harvesting tools
+            // We do NOT need seeds since the contract will be complete after harvesting
+            boolean isHerbContract = currentContract.getPatchImplementation() == PatchImplementation.HERB;
+            
+            if (isHerbContract) {
+                // Herbs REQUIRE a spade for harvesting
+                if (hasSpade) {
+                    if (!hasSecateurs) {
+                        log.warn("Harvesting herbs without magic secateurs - lower yield expected");
+                    }
+                    log.info("Ready to harvest herbs (spade: yes, magic secateurs: {})", hasSecateurs);
+                    state = FarmingContractState.FARM;
+                    return;
+                } else {
+                    log.info("Need spade for herb harvesting");
+                }
+            } else {
+                // For non-herb harvesting, just need spade
+                if (hasSpade) {
+                    log.info("Ready to harvest");
+                    state = FarmingContractState.FARM;
+                    return;
+                } else {
+                    log.info("Need spade for harvesting");
+                }
             }
         }
         
@@ -395,9 +442,9 @@ public class FarmingContractScript extends Script {
                 Rs2Bank.withdrawX("Spade", 1);
             }
             
-            // We need planting items if we're planting, clearing, or harvesting (since we'll plant after)
-            // But NOT for check-health (UNCHECKED state) since we don't know if we'll need to replant
-            if (needsPlanting || needsClearing || needsHarvesting) {
+            // We need planting items only if we're planting or clearing dead crops
+            // NOT for harvesting (contract will be complete) or check-health (don't know if we'll need to replant)
+            if (needsPlanting || needsClearing) {
                 if (!hasRake && Rs2Bank.hasBankItem("Rake", 1)) {
                     Rs2Bank.withdrawX("Rake", 1);
                 }
@@ -431,6 +478,16 @@ public class FarmingContractScript extends Script {
             
             if (needsCuring && !hasPlantCure && Rs2Bank.hasBankItem("Plant cure", 1)) {
                 Rs2Bank.withdrawX("Plant cure", 1);
+            }
+            
+            // For herb harvesting, withdraw magic secateurs for better yield
+            if (needsHarvesting && currentContract.getPatchImplementation() == PatchImplementation.HERB && !hasSecateurs) {
+                if (Rs2Bank.hasBankItem("Magic secateurs", 1)) {
+                    Rs2Bank.withdrawX("Magic secateurs", 1);
+                    log.info("Withdrew magic secateurs for herb harvesting");
+                } else {
+                    log.warn("No magic secateurs available in bank - will harvest herbs with reduced yield");
+                }
             }
             
             // For tree contracts, ensure we have coins for clearing
@@ -806,7 +863,9 @@ public class FarmingContractScript extends Script {
         
         log.info("Starting harvest of {} using action: {}", currentContract.getName(), action);
         if (!Rs2GameObject.interact(patch, action, true)) {
-            // Walking to patch, will retry on next loop
+            // Can't reach patch, walk to it manually
+            log.info("Can't reach patch for harvesting, walking to location");
+            Rs2Walker.walkTo(patch.getWorldLocation());
             return;
         }
         
