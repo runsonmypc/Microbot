@@ -374,11 +374,32 @@ public class FarmingContractScript extends Script {
         
         // Determine if we're ready
         if (needsChecking) {
-            // For check-health, we just need a spade in case we need to clear after
-            if (hasSpade) {
-                log.info("Ready to check-health on patch");
-                state = FarmingContractState.FARM;
-                return;
+            // For bushes and cacti, spade is MANDATORY for the clearing process after check-health
+            boolean isBushOrCactus = currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+                                      currentContract.getPatchImplementation() == PatchImplementation.CACTUS;
+            
+            if (isBushOrCactus) {
+                if (hasSpade) {
+                    log.info("Ready to check-health on {} (spade equipped for clearing)", 
+                            currentContract.getPatchImplementation());
+                    state = FarmingContractState.FARM;
+                    return;
+                } else {
+                    log.info("Need spade for {} clearing after check-health", 
+                            currentContract.getPatchImplementation());
+                    // Continue to banking to get spade
+                }
+            } else {
+                // For other check-health contracts, spade is optional but recommended
+                if (hasSpade) {
+                    log.info("Ready to check-health on patch");
+                    state = FarmingContractState.FARM;
+                    return;
+                } else {
+                    log.info("Proceeding to check-health without spade");
+                    state = FarmingContractState.FARM;
+                    return;
+                }
             }
         }
         
@@ -386,6 +407,8 @@ public class FarmingContractScript extends Script {
             // For harvesting contracts, we just need harvesting tools
             // We do NOT need seeds since the contract will be complete after harvesting
             boolean isHerbContract = currentContract.getPatchImplementation() == PatchImplementation.HERB;
+            boolean isBushOrCactus = currentContract.getPatchImplementation() == PatchImplementation.BUSH ||
+                                      currentContract.getPatchImplementation() == PatchImplementation.CACTUS;
             
             if (isHerbContract) {
                 // Herbs REQUIRE a spade for harvesting
@@ -399,8 +422,19 @@ public class FarmingContractScript extends Script {
                 } else {
                     log.info("Need spade for herb harvesting");
                 }
+            } else if (isBushOrCactus) {
+                // Bushes and cacti REQUIRE a spade for clearing after harvesting
+                if (hasSpade) {
+                    log.info("Ready to harvest {} (spade equipped for clearing)", 
+                            currentContract.getPatchImplementation());
+                    state = FarmingContractState.FARM;
+                    return;
+                } else {
+                    log.info("Need spade for {} - required for clearing after harvest", 
+                            currentContract.getPatchImplementation());
+                }
             } else {
-                // For non-herb harvesting, just need spade
+                // For other harvesting types, spade is still needed
                 if (hasSpade) {
                     log.info("Ready to harvest");
                     state = FarmingContractState.FARM;
