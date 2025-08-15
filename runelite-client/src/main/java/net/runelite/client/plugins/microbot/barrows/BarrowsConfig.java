@@ -6,7 +6,7 @@ import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Food;
 
 @ConfigGroup("barrows")
-@ConfigInformation("1. Have an inventory setup named Barrows <br><br> 2. Required items: prayer potions or moonlight moth mixes(2), barrows teleports tablets, or teleport to house tablets, food, Catalyic runes (if using wind spells), and a spade.<br /><br /> 3. Spells: Wind: Blast, Wave, and Surge. Or Powered staffs: supports any trident, any sceptre, any crystal staff, Tumeken's, and Sanguinesti. <br /><br /> Special thanks to george for adding the barrows dungeon to the walker; and Crannyy for script testing!<br /><br /> Config by Crannyy")
+@ConfigInformation("1. Have an inventory setup named Barrows <br><br> 2. Required items: prayer potions or moonlight moth mixes(2), barrows teleports tablets, or teleport to house tablets, food, Catalytic runes (if using wind spells), and a spade.<br /><br /> 3. Spells: Wind: Bolt, Blast, Wave, and Surge. Or Powered staffs: supports any trident, any sceptre, any crystal staff, Tumeken's, and Sanguinesti. <br /><br /> Special thanks to george for adding the barrows dungeon to the walker; and Crannyy for script testing!<br /><br /> Config by Crannyy")
 public interface BarrowsConfig extends Config {
     @ConfigItem(
             keyName = "inventorySetup",
@@ -182,10 +182,50 @@ public interface BarrowsConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "selectedSpell",
+            name = "Combat Spell",
+            description = "Select which wind spell to use (or Powered Staff if using one)",
+            position = 12
+    )
+    default CombatSpell selectedSpell() {
+        return CombatSpell.WIND_BLAST;
+    }
+
+    enum CombatSpell {
+        WIND_BOLT("Wind Bolt", "Chaos rune", 17),
+        WIND_BLAST("Wind Blast", "Death rune", 41),
+        WIND_WAVE("Wind Wave", "Blood rune", 62),
+        WIND_SURGE("Wind Surge", "Wrath rune", 81),
+        POWERED_STAFF("Powered Staff", "none", 0);
+
+        private final String name;
+        private final String runeType;
+        private final int requiredLevel;
+
+        CombatSpell(String name, String runeType, int requiredLevel) {
+            this.name = name;
+            this.runeType = runeType;
+            this.requiredLevel = requiredLevel;
+        }
+
+        public String getSpellName() {
+            return name;
+        }
+
+        public String getRuneType() {
+            return runeType;
+        }
+
+        public int getRequiredLevel() {
+            return requiredLevel;
+        }
+    }
+
+    @ConfigItem(
             keyName = "minRuneAmount",
             name = "Min Runes",
             description = "Minimum amount of runes before banking",
-            position = 12
+            position = 13
     )
     @Range(min = 50, max = 1000)
     default int minRuneAmount() {
@@ -196,7 +236,7 @@ public interface BarrowsConfig extends Config {
             keyName = "shouldGainRP",
             name = "Aim for 86+% rewards potential",
             description = "Should we gain additional RP other than the barrows brothers?",
-            position = 13
+            position = 14
     )
     default boolean shouldGainRP() {
         return false;
@@ -205,7 +245,7 @@ public interface BarrowsConfig extends Config {
     @ConfigSection(
             name = "Individual Brother Prayer Settings",
             description = "Configure prayer for each Barrows brother",
-            position = 14
+            position = 15
     )
     String brotherPrayerSection = "brotherPrayers";
 
@@ -213,7 +253,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstDharok",
             name = "Pray against Dharok",
             description = "Use Protect from Melee against Dharok",
-            position = 15,
+            position = 16,
             section = brotherPrayerSection
     )
     default boolean prayAgainstDharok() {
@@ -224,7 +264,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstTorag",
             name = "Pray against Torag",
             description = "Use Protect from Melee against Torag",
-            position = 16,
+            position = 17,
             section = brotherPrayerSection
     )
     default boolean prayAgainstTorag() {
@@ -235,7 +275,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstGuthan",
             name = "Pray against Guthan",
             description = "Use Protect from Melee against Guthan",
-            position = 17,
+            position = 18,
             section = brotherPrayerSection
     )
     default boolean prayAgainstGuthan() {
@@ -246,7 +286,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstVerac",
             name = "Pray against Verac",
             description = "Use Protect from Melee against Verac",
-            position = 18,
+            position = 19,
             section = brotherPrayerSection
     )
     default boolean prayAgainstVerac() {
@@ -257,7 +297,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstAhrim",
             name = "Pray against Ahrim",
             description = "Use Protect from Magic against Ahrim",
-            position = 19,
+            position = 20,
             section = brotherPrayerSection
     )
     default boolean prayAgainstAhrim() {
@@ -268,7 +308,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstKaril",
             name = "Pray against Karil",
             description = "Use Protect from Ranged against Karil",
-            position = 20,
+            position = 21,
             section = brotherPrayerSection
     )
     default boolean prayAgainstKaril() {
@@ -276,20 +316,20 @@ public interface BarrowsConfig extends Config {
     }
 
     @ConfigSection(
-            name = "Ahrim Gear Swap",
-            description = "Configure gear to swap when fighting Ahrim",
-            position = 21
+            name = "Prayer Gear Swap",
+            description = "Configure gear to swap when fighting brothers with prayer",
+            position = 22
     )
-    String ahrimGearSection = "ahrimGear";
+    String prayerGearSection = "prayerGear";
 
     @ConfigItem(
-            keyName = "ahrimGearSwap",
-            name = "Ahrim Gear",
-            description = "Comma-separated list of items to equip when fighting Ahrim (e.g., 'Occult necklace, Tormented bracelet, Wizard boots')",
-            position = 22,
-            section = ahrimGearSection
+            keyName = "prayerGearSwap",
+            name = "Prayer Gear",
+            description = "Comma-separated list of items to equip when praying against brothers (e.g., 'Occult necklace, Tormented bracelet, Wizard boots')",
+            position = 23,
+            section = prayerGearSection
     )
-    default String ahrimGearSwap() {
+    default String prayerGearSwap() {
         return "";
     }
 

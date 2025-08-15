@@ -122,7 +122,7 @@ public class BarrowsScript extends Script {
                     usingPoweredStaffs = true;
                 } else {
                     usingPoweredStaffs = false;
-                    gettheRune();
+                    gettheRune(config);
                     minRuneAmt = config.minRuneAmount();
                 }
 
@@ -175,7 +175,7 @@ public class BarrowsScript extends Script {
                         closeBank();
 
                         if(!usingPoweredStaffs){
-                            setAutoCast();
+                            setAutoCast(config);
                         }
 
                         Microbot.log("Checking mound for: " + brother.getName());
@@ -267,13 +267,13 @@ public class BarrowsScript extends Script {
                                 shouldPray = true;
                             } else if (brother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
                                 shouldPray = true;
-                                // Swap gear for Ahrim
-                                swapGearForAhrim(config);
                             } else if (brother.getName().contains("Karil") && config.prayAgainstKaril()) {
                                 shouldPray = true;
                             }
 
                             if (shouldPray) {
+                                // Swap gear when praying against any brother
+                                swapGearForPrayer(config);
                                 activatePrayer();
                             }
 
@@ -353,8 +353,8 @@ public class BarrowsScript extends Script {
                                         //anti pattern
                                         disablePrayer();
                                         //anti pattern
-                                        // Restore gear if we were fighting Ahrim
-                                        if(brother.getName().contains("Ahrim")) {
+                                        // Restore gear if we were praying
+                                        if(shouldPray) {
                                             restoreOriginalGear();
                                         }
                                         break;
@@ -768,6 +768,9 @@ public class BarrowsScript extends Script {
                 }
             }
         }
+        // Reset gear swap flag for new run
+        gearSwapped = false;
+        originalGear.clear();
     }
 
     public void handlePOH(BarrowsConfig config){
@@ -1024,7 +1027,7 @@ public class BarrowsScript extends Script {
                     Rs2Inventory.count(config.food().getName()) < 2 || 
                     (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
                     Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
-                    Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1 ||
+                    !Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) ||
                     Rs2Inventory.get(neededRune) == null || Rs2Inventory.get(neededRune).getQuantity() <= minRuneAmt || Rs2Player.getRunEnergy() <= 5) {
                 Microbot.log("We need to bank.");
                 if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null) {
@@ -1042,8 +1045,8 @@ public class BarrowsScript extends Script {
                 if (Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews) {
                     Microbot.log("We forgot our Forgotten brew.");
                 }
-                if (Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1) {
-                    Microbot.log("We don't have enough "+config.prayerRestoreType().getPrayerRestoreTypeName());
+                if (!Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth")))) {
+                    Microbot.log("We don't have any prayer restore items");
                 }
                 if (Rs2Inventory.get(neededRune) == null || Rs2Inventory.get(neededRune).getQuantity() <= minRuneAmt) {
                     Microbot.log("We have less than 180 " + neededRune);
@@ -1061,7 +1064,7 @@ public class BarrowsScript extends Script {
                     Rs2Inventory.count(config.food().getName())<2 || 
                     (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
                     Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
-                    Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1 || outOfPoweredStaffCharges
+                    !Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) || outOfPoweredStaffCharges
                     || Rs2Player.getRunEnergy() <= 5){
                 Microbot.log("We need to bank.");
                 if(Rs2Equipment.get(EquipmentInventorySlot.RING)==null){
@@ -1079,8 +1082,8 @@ public class BarrowsScript extends Script {
                 if(Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews){
                     Microbot.log("We forgot our Forgotten brew.");
                 }
-                if(Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1){
-                    Microbot.log("We don't have enough prayer potions.");
+                if(!Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth")))){
+                    Microbot.log("We don't have any prayer restore items");
                 }
                 if(outOfPoweredStaffCharges){
                     Microbot.log("We're out of staff charges.");
@@ -1114,42 +1117,42 @@ public class BarrowsScript extends Script {
         }
     }
 
-    public void gettheRune(){
+    public void gettheRune(BarrowsConfig config){
         if(!neededRune.equals("unknown")) return;
 
-        neededRune = "unknown";
-        int magicLvl = Rs2Player.getRealSkillLevel(Skill.MAGIC);
-
-        if(magicLvl >= 41 && magicLvl < 62){
-            neededRune = "Death rune";
-        }
-
-        if(magicLvl >= 62 && magicLvl < 81){
-            neededRune = "Blood rune";
-        }
-
-        if(magicLvl >= 81){
-            neededRune = "Wrath rune";
+        neededRune = config.selectedSpell().getRuneType();
+        
+        // If it's a powered staff, we don't need catalytic runes
+        if(neededRune.equals("none")) {
+            neededRune = "unknown"; // Keep as unknown for powered staff
         }
     }
 
-    public void setAutoCast(){
-        if(neededRune == "Wrath rune"){
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_SURGE) {
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_SURGE, false);
-            }
-        }
-
-        if(neededRune == "Blood rune"){
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_WAVE) {
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_WAVE, false);
-            }
-        }
-
-        if(neededRune == "Death rune"){
-            if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_BLAST) {
-                Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_BLAST, false);
-            }
+    public void setAutoCast(BarrowsConfig config){
+        switch(config.selectedSpell()) {
+            case WIND_BOLT:
+                if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_BOLT) {
+                    Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_BOLT, false);
+                }
+                break;
+            case WIND_BLAST:
+                if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_BLAST) {
+                    Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_BLAST, false);
+                }
+                break;
+            case WIND_WAVE:
+                if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_WAVE) {
+                    Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_WAVE, false);
+                }
+                break;
+            case WIND_SURGE:
+                if (Rs2Magic.getCurrentAutoCastSpell() != Rs2CombatSpells.WIND_SURGE) {
+                    Rs2Combat.setAutoCastSpell(Rs2CombatSpells.WIND_SURGE, false);
+                }
+                break;
+            case POWERED_STAFF:
+                // No autocast needed for powered staffs
+                break;
         }
     }
 
@@ -1267,7 +1270,7 @@ public class BarrowsScript extends Script {
         if(currentBrother != null && !currentBrother.getName().contains("Dharok") && currentBrother.getHealthPercentage() < Rs2Random.between(35,42)) skipThePot = true;
 
         if(!skipThePot) {
-            if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(8, 15)) {
+            if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(5, 12)) {
                 if (Rs2Inventory.contains(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) {
                     Rs2ItemModel prayerpotion = Rs2Inventory.get(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"));
                     String action = "Drink";
@@ -1308,8 +1311,6 @@ public class BarrowsScript extends Script {
                 } else if (currentBrother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
                     shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_MAGIC;
-                    // Swap gear for Ahrim in tunnels
-                    swapGearForAhrim(config);
                 } else if (currentBrother.getName().contains("Karil") && config.prayAgainstKaril()) {
                     shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_RANGE;
@@ -1318,6 +1319,9 @@ public class BarrowsScript extends Script {
                 if (!shouldPray) {
                     return;
                 }
+                
+                // Swap gear when praying in tunnels
+                swapGearForPrayer(config);
                 
                 //activate prayer
                 if(!Rs2Prayer.isPrayerActive(neededprayer)){
@@ -1406,8 +1410,8 @@ public class BarrowsScript extends Script {
 
                         if(currentBrother.isDead()){
                             Microbot.log("Breaking out the brother is dead.");
-                            // Restore gear if we were fighting Ahrim in tunnels
-                            if(currentBrother.getName().contains("Ahrim")) {
+                            // Restore gear if we were praying in tunnels
+                            if(shouldPray) {
                                 restoreOriginalGear();
                             }
                             sleepUntil(()-> Microbot.getClient().getHintArrowNpc() == null, Rs2Random.between(3000,6000));
@@ -1419,8 +1423,8 @@ public class BarrowsScript extends Script {
         }
     }
 
-    private void swapGearForAhrim(BarrowsConfig config) {
-        String gearSwapConfig = config.ahrimGearSwap();
+    private void swapGearForPrayer(BarrowsConfig config) {
+        String gearSwapConfig = config.prayerGearSwap();
         if (gearSwapConfig == null || gearSwapConfig.trim().isEmpty()) {
             return; // No gear swap configured
         }
@@ -1429,8 +1433,31 @@ public class BarrowsScript extends Script {
             return; // Already swapped
         }
         
-        Microbot.log("Swapping gear for Ahrim fight");
+        Microbot.log("Swapping gear for prayer fight");
         originalGear.clear();
+        
+        // Save currently equipped items before swapping
+        // We check common slots that might be swapped for magic gear
+        EquipmentInventorySlot[] slotsToCheck = {
+            EquipmentInventorySlot.AMULET,
+            EquipmentInventorySlot.RING,
+            EquipmentInventorySlot.GLOVES,
+            EquipmentInventorySlot.BOOTS,
+            EquipmentInventorySlot.CAPE,
+            EquipmentInventorySlot.SHIELD,
+            EquipmentInventorySlot.WEAPON,
+            EquipmentInventorySlot.HEAD,
+            EquipmentInventorySlot.BODY,
+            EquipmentInventorySlot.LEGS
+        };
+        
+        for (EquipmentInventorySlot slot : slotsToCheck) {
+            Rs2ItemModel equippedItem = Rs2Equipment.get(slot);
+            if (equippedItem != null) {
+                originalGear.put(slot, equippedItem.getName());
+                Microbot.log("Saved " + slot + ": " + equippedItem.getName());
+            }
+        }
         
         String[] items = gearSwapConfig.split(",");
         for (String item : items) {
@@ -1439,16 +1466,11 @@ public class BarrowsScript extends Script {
             
             // Check if we have the item in inventory
             if (!Rs2Inventory.hasItem(itemName)) {
-                Microbot.log("Missing item for Ahrim swap: " + itemName);
+                Microbot.log("Missing item for prayer gear swap: " + itemName);
                 continue;
             }
             
-            // Get the slot this item will go into
-            Rs2ItemModel inventoryItem = Rs2Inventory.get(itemName);
-            if (inventoryItem == null) continue;
-            
-            // Store what's currently equipped (we'll determine slot after equipping)
-            // For now, just equip the item
+            // Equip the item
             if (Rs2Inventory.wield(itemName)) {
                 Microbot.log("Equipped: " + itemName);
                 sleep(300, 600);
@@ -1463,11 +1485,28 @@ public class BarrowsScript extends Script {
             return; // Nothing to restore
         }
         
-        Microbot.log("Restoring original gear after Ahrim fight");
+        Microbot.log("Restoring original gear after prayer fight");
         
-        // Since we don't track the exact original items per slot in this simplified version,
-        // we'll rely on the player having their normal gear in inventory after unequipping Ahrim gear
-        // This is a simplified approach - a more robust solution would track exact items per slot
+        // Re-equip the original items we saved
+        for (Map.Entry<EquipmentInventorySlot, String> entry : originalGear.entrySet()) {
+            String itemName = entry.getValue();
+            
+            // Check if we need to swap this slot (if something different is equipped)
+            Rs2ItemModel currentlyEquipped = Rs2Equipment.get(entry.getKey());
+            if (currentlyEquipped != null && currentlyEquipped.getName().equals(itemName)) {
+                continue; // Already wearing the original item
+            }
+            
+            // Check if we have the original item in inventory
+            if (Rs2Inventory.hasItem(itemName)) {
+                if (Rs2Inventory.wield(itemName)) {
+                    Microbot.log("Re-equipped: " + itemName);
+                    sleep(300, 600);
+                }
+            } else {
+                Microbot.log("Cannot restore " + itemName + " - not in inventory");
+            }
+        }
         
         gearSwapped = false;
         originalGear.clear();
@@ -1557,11 +1596,11 @@ public class BarrowsScript extends Script {
 
     public enum BarrowsBrothers {
         DHAROK ("Dharok the Wretched", new Rs2WorldArea(3573,3296,3,3,0), Rs2PrayerEnum.PROTECT_MELEE),
-        GUTHAN ("Guthan the Infested", new Rs2WorldArea(3575,3280,3,3,0), Rs2PrayerEnum.PROTECT_MELEE),
         KARIL  ("Karil the Tainted", new Rs2WorldArea(3564,3274,3,3,0), Rs2PrayerEnum.PROTECT_RANGE),
+        AHRIM  ("Ahrim the Blighted", new Rs2WorldArea(3563,3288,3,3,0), Rs2PrayerEnum.PROTECT_MAGIC),
+        GUTHAN ("Guthan the Infested", new Rs2WorldArea(3575,3280,3,3,0), Rs2PrayerEnum.PROTECT_MELEE),
         TORAG  ("Torag the Corrupted", new Rs2WorldArea(3552,3282,2,2,0), Rs2PrayerEnum.PROTECT_MELEE),
-        VERAC  ("Verac the Defiled", new Rs2WorldArea(3556,3297,3,3,0), Rs2PrayerEnum.PROTECT_MELEE),
-        AHRIM  ("Ahrim the Blighted", new Rs2WorldArea(3563,3288,3,3,0), Rs2PrayerEnum.PROTECT_MAGIC);
+        VERAC  ("Verac the Defiled", new Rs2WorldArea(3556,3297,3,3,0), Rs2PrayerEnum.PROTECT_MELEE);
 
         private String name;
 
