@@ -202,20 +202,10 @@ public interface BarrowsConfig extends Config {
         return false;
     }
 
-    @ConfigItem(
-            keyName = "shouldPrayAgainstWeakerBrothers",
-            name = "Pray against Torag, Verac, and Guthans?",
-            description = "Should we Pray against Torag, Verac, and Guthans?",
-            position = 14
-    )
-    default boolean shouldPrayAgainstWeakerBrothers() {
-        return true;
-    }
-
     @ConfigSection(
             name = "Individual Brother Prayer Settings",
             description = "Configure prayer for each Barrows brother",
-            position = 15
+            position = 14
     )
     String brotherPrayerSection = "brotherPrayers";
 
@@ -223,7 +213,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstDharok",
             name = "Pray against Dharok",
             description = "Use Protect from Melee against Dharok",
-            position = 16,
+            position = 15,
             section = brotherPrayerSection
     )
     default boolean prayAgainstDharok() {
@@ -234,7 +224,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstTorag",
             name = "Pray against Torag",
             description = "Use Protect from Melee against Torag",
-            position = 17,
+            position = 16,
             section = brotherPrayerSection
     )
     default boolean prayAgainstTorag() {
@@ -245,7 +235,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstGuthan",
             name = "Pray against Guthan",
             description = "Use Protect from Melee against Guthan",
-            position = 18,
+            position = 17,
             section = brotherPrayerSection
     )
     default boolean prayAgainstGuthan() {
@@ -256,7 +246,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstVerac",
             name = "Pray against Verac",
             description = "Use Protect from Melee against Verac",
-            position = 19,
+            position = 18,
             section = brotherPrayerSection
     )
     default boolean prayAgainstVerac() {
@@ -267,7 +257,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstAhrim",
             name = "Pray against Ahrim",
             description = "Use Protect from Magic against Ahrim",
-            position = 20,
+            position = 19,
             section = brotherPrayerSection
     )
     default boolean prayAgainstAhrim() {
@@ -278,7 +268,7 @@ public interface BarrowsConfig extends Config {
             keyName = "prayAgainstKaril",
             name = "Pray against Karil",
             description = "Use Protect from Ranged against Karil",
-            position = 21,
+            position = 20,
             section = brotherPrayerSection
     )
     default boolean prayAgainstKaril() {
