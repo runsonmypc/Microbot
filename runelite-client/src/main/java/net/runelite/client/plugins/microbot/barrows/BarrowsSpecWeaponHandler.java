@@ -64,9 +64,14 @@ public class BarrowsSpecWeaponHandler {
             return;
         }
         
-        // Check if we need to equip defender for one-handed weapons
         SpecialAttackWeaponEnum specWeapon = config.specWeapon();
-        if (!specWeapon.is2H() && config.equipDefender() && !specWeaponEquipped) {
+        
+        // Check if we have enough spec energy to use the spec weapon
+        int specEnergyRequired = specWeapon.getEnergyRequired() / 10; // Convert to percentage
+        boolean hasEnoughSpec = Rs2Combat.getSpecEnergy() >= specEnergyRequired;
+        
+        // Only equip defender when we actually have spec energy to use
+        if (!specWeapon.is2H() && config.equipDefender() && hasEnoughSpec && !specWeaponEquipped) {
             equipDefenderIfAvailable();
             specWeaponEquipped = true;
         }
@@ -79,13 +84,12 @@ public class BarrowsSpecWeaponHandler {
             log.info("Used special attack on {}", brotherName);
         }
         
-        // Check if we should restore the defender/shield after spec weapon is done
-        // The SpecialAttackConfigs restores the mainhand but not the offhand
-        if (specWeaponEquipped && !preSpecGear.isEmpty()) {
-            // Check if spec weapon is no longer equipped (meaning it was swapped back)
-            Rs2ItemModel currentWeapon = Rs2Equipment.get(EquipmentInventorySlot.WEAPON);
-            if (currentWeapon == null || !currentWeapon.getName().toLowerCase().contains(specWeapon.getName().toLowerCase())) {
-                // Spec weapon was swapped back, restore our offhand too
+        // Only restore offhand if we no longer have spec energy and are still equipped with defender
+        // This prevents the constant swapping back and forth
+        if (specWeaponEquipped && !hasEnoughSpec) {
+            Rs2ItemModel currentOffhand = Rs2Equipment.get(EquipmentInventorySlot.SHIELD);
+            if (currentOffhand != null && currentOffhand.getName().toLowerCase().contains("defender")) {
+                // We're out of spec energy and still have defender equipped, restore original offhand
                 restoreOffhandGear();
             }
         }
