@@ -249,12 +249,24 @@ public class BarrowsScript extends Script {
                         if (Rs2Player.getWorldLocation().getPlane() == 3) {
                             Microbot.log("We're in the mound");
 
-                            if(config.shouldPrayAgainstWeakerBrothers()){
+                            // Check if we should pray against this specific brother
+                            boolean shouldPray = false;
+                            if (brother.getName().contains("Dharok") && config.prayAgainstDharok()) {
+                                shouldPray = true;
+                            } else if (brother.getName().contains("Torag") && config.prayAgainstTorag()) {
+                                shouldPray = true;
+                            } else if (brother.getName().contains("Guthan") && config.prayAgainstGuthan()) {
+                                shouldPray = true;
+                            } else if (brother.getName().contains("Verac") && config.prayAgainstVerac()) {
+                                shouldPray = true;
+                            } else if (brother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
+                                shouldPray = true;
+                            } else if (brother.getName().contains("Karil") && config.prayAgainstKaril()) {
+                                shouldPray = true;
+                            }
+
+                            if (shouldPray) {
                                 activatePrayer();
-                            } else {
-                                if(!brother.getName().contains("Torag") && !brother.getName().contains("Guthan") && !brother.getName().contains("Verac")){
-                                    activatePrayer();
-                                }
                             }
 
                             // we're in the mound, prayer is active
@@ -309,12 +321,9 @@ public class BarrowsScript extends Script {
                                         break;
                                     }
 
-                                    if(config.shouldPrayAgainstWeakerBrothers()){
+                                    // Re-check if we should pray (using existing shouldPray variable)
+                                    if (shouldPray) {
                                         activatePrayer();
-                                    } else {
-                                        if(!brother.getName().contains("Torag") && !brother.getName().contains("Guthan") && !brother.getName().contains("Verac")){
-                                            activatePrayer();
-                                        }
                                     }
 
                                     sleep(500,1500);
@@ -323,12 +332,9 @@ public class BarrowsScript extends Script {
                                     antiPatternDropVials();
                                     drinkforgottonbrew();
 
-                                    if(config.shouldPrayAgainstWeakerBrothers()){
+                                    // Only drink prayer potions if we're using prayer and in combat
+                                    if (shouldPray && Rs2Player.isInCombat()) {
                                         drinkPrayerPot();
-                                    } else {
-                                        if(!brother.getName().contains("Torag") && !brother.getName().contains("Guthan") && !brother.getName().contains("Verac")){
-                                            drinkPrayerPot();
-                                        }
                                     }
 
                                     if(Microbot.getClient().getHintArrowNpc() == null){
@@ -1269,14 +1275,36 @@ public class BarrowsScript extends Script {
         if (hintArrow != null) {
             currentBrother = new Rs2NpcModel(hintArrow);
             stopFutureWalker();
-            Rs2PrayerEnum neededprayer = Rs2PrayerEnum.PROTECT_MELEE;
+            
             if (currentBrother != null && Rs2Npc.hasLineOfSight(currentBrother)) {
-                if(currentBrother.getName().contains("Ahrim")){
+                // Check if we should pray against this specific brother
+                boolean shouldPray = false;
+                Rs2PrayerEnum neededprayer = Rs2PrayerEnum.PROTECT_MELEE; // default
+                
+                if (currentBrother.getName().contains("Dharok") && config.prayAgainstDharok()) {
+                    shouldPray = true;
+                    neededprayer = Rs2PrayerEnum.PROTECT_MELEE;
+                } else if (currentBrother.getName().contains("Torag") && config.prayAgainstTorag()) {
+                    shouldPray = true;
+                    neededprayer = Rs2PrayerEnum.PROTECT_MELEE;
+                } else if (currentBrother.getName().contains("Guthan") && config.prayAgainstGuthan()) {
+                    shouldPray = true;
+                    neededprayer = Rs2PrayerEnum.PROTECT_MELEE;
+                } else if (currentBrother.getName().contains("Verac") && config.prayAgainstVerac()) {
+                    shouldPray = true;
+                    neededprayer = Rs2PrayerEnum.PROTECT_MELEE;
+                } else if (currentBrother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
+                    shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_MAGIC;
-                }
-                if(currentBrother.getName().contains("Karil")){
+                } else if (currentBrother.getName().contains("Karil") && config.prayAgainstKaril()) {
+                    shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_RANGE;
                 }
+                
+                if (!shouldPray) {
+                    return;
+                }
+                
                 //activate prayer
                 if(!Rs2Prayer.isPrayerActive(neededprayer)){
                     Microbot.log("Turning on Prayer.");
@@ -1284,7 +1312,10 @@ public class BarrowsScript extends Script {
                         if (!super.isRunning()) {
                             break;
                         }
-                        drinkPrayerPot();
+                        // Only drink prayer pots if in combat
+                        if (Rs2Player.isInCombat()) {
+                            drinkPrayerPot();
+                        }
                         Rs2Prayer.toggle(neededprayer);
                         sleep(0,750);
                         if (Rs2Prayer.isPrayerActive(neededprayer)) {
@@ -1315,19 +1346,27 @@ public class BarrowsScript extends Script {
                             break;
                         }
                         sleep(750,1500);
-                        drinkPrayerPot();
+                        
+                        // Only drink prayer pots if in combat and using prayer
+                        if (Rs2Player.isInCombat() && shouldPray) {
+                            drinkPrayerPot();
+                        }
+                        
                         eatFood();
                         outOfSupplies(config);
                         antiPatternDropVials();
                         drinkforgottonbrew();
 
-                        if(!Rs2Prayer.isPrayerActive(neededprayer)){
+                        if(shouldPray && !Rs2Prayer.isPrayerActive(neededprayer)){
                             Microbot.log("Turning on Prayer.");
                             while(!Rs2Prayer.isPrayerActive(neededprayer)){
                                 if (!super.isRunning()) {
                                     break;
                                 }
-                                drinkPrayerPot();
+                                // Only drink prayer pots if in combat
+                                if (Rs2Player.isInCombat()) {
+                                    drinkPrayerPot();
+                                }
                                 Rs2Prayer.toggle(neededprayer);
                                 sleep(0,750);
                                 if (Rs2Prayer.isPrayerActive(neededprayer)) {

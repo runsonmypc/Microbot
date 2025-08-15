@@ -212,4 +212,77 @@ public interface BarrowsConfig extends Config {
         return true;
     }
 
+    @ConfigSection(
+            name = "Individual Brother Prayer Settings",
+            description = "Configure prayer for each Barrows brother",
+            position = 15
+    )
+    String brotherPrayerSection = "brotherPrayers";
+
+    @ConfigItem(
+            keyName = "prayAgainstDharok",
+            name = "Pray against Dharok",
+            description = "Use Protect from Melee against Dharok",
+            position = 16,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstDharok() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "prayAgainstTorag",
+            name = "Pray against Torag",
+            description = "Use Protect from Melee against Torag",
+            position = 17,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstTorag() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "prayAgainstGuthan",
+            name = "Pray against Guthan",
+            description = "Use Protect from Melee against Guthan",
+            position = 18,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstGuthan() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "prayAgainstVerac",
+            name = "Pray against Verac",
+            description = "Use Protect from Melee against Verac",
+            position = 19,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstVerac() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "prayAgainstAhrim",
+            name = "Pray against Ahrim",
+            description = "Use Protect from Magic against Ahrim",
+            position = 20,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstAhrim() {
+        return true;
+    }
+
+    @ConfigItem(
+            keyName = "prayAgainstKaril",
+            name = "Pray against Karil",
+            description = "Use Protect from Ranged against Karil",
+            position = 21,
+            section = brotherPrayerSection
+    )
+    default boolean prayAgainstKaril() {
+        return true;
+    }
+
 }
