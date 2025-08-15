@@ -67,6 +67,10 @@ public class BarrowsScript extends Script {
     // Gear swap management for Ahrim
     private Map<EquipmentInventorySlot, String> originalGear = new HashMap<>();
     private boolean gearSwapped = false;
+    
+    // Spec weapon handler
+    private final BarrowsSpecWeaponHandler specWeaponHandler = new BarrowsSpecWeaponHandler();
+    
     public static boolean firstRun = false;
     private BarrowsConfig config;
 
@@ -428,6 +432,11 @@ public class BarrowsScript extends Script {
                                     outOfSupplies(config);
                                     antiPatternDropVials();
                                     drinkforgottonbrew();
+                                    
+                                    // Handle special attack weapon usage for crypt brothers
+                                    if (currentBrother != null) {
+                                        specWeaponHandler.handleSpecWeaponUsage(currentBrother.getName(), config);
+                                    }
 
                                     // Only drink prayer potions if we're using prayer and in combat
                                     if (shouldPray && Rs2Player.isInCombat()) {
@@ -446,6 +455,9 @@ public class BarrowsScript extends Script {
                                         if(shouldPray) {
                                             restoreOriginalGear();
                                         }
+                                        
+                                        // Restore spec weapon gear if needed
+                                        specWeaponHandler.restorePreSpecGear();
                                         break;
                                     }
                                 }
@@ -1387,6 +1399,7 @@ public class BarrowsScript extends Script {
 
     public void gainRP(BarrowsConfig config){
         if(shouldAttackSkeleton){
+            // ALWAYS check RP first, even if we're in combat
             int currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
             
             // Check if there's still a brother alive (will give us ~100 RP)
@@ -1405,7 +1418,8 @@ public class BarrowsScript extends Script {
             }
             
             if(currentRP >= targetRP){
-                Microbot.log("We have enough RP (" + currentRP + "/" + targetRP + ")");
+                Microbot.log("We have enough RP (" + currentRP + "/" + targetRP + "), stopping skeleton fights");
+                // If we're in combat, just let it end naturally by returning
                 return;
             }
             
@@ -1918,6 +1932,11 @@ public class BarrowsScript extends Script {
                         outOfSupplies(config);
                         antiPatternDropVials();
                         drinkforgottonbrew();
+                        
+                        // Handle special attack weapon usage
+                        if (currentBrother != null) {
+                            specWeaponHandler.handleSpecWeaponUsage(currentBrother.getName(), config);
+                        }
 
                         if(shouldPray && !Rs2Prayer.isPrayerActive(neededprayer)){
                             // Disable wrong prayers first
@@ -1991,6 +2010,9 @@ public class BarrowsScript extends Script {
                                 disablePrayer();
                                 restoreOriginalGear();
                             }
+                            
+                            // Restore spec weapon gear if needed
+                            specWeaponHandler.restorePreSpecGear();
                             sleepUntil(()-> Microbot.getClient().getHintArrowNpc() == null, Rs2Random.between(3000,6000));
                             break;
                         }
@@ -2272,6 +2294,7 @@ public class BarrowsScript extends Script {
 
     @Override
     public void shutdown() {
+        specWeaponHandler.reset();
         super.shutdown();
     }
 }

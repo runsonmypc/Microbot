@@ -70,6 +70,15 @@ public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
         Rs2Antiban.resetAntibanSettings();
         Rs2Antiban.antibanSetupTemplates.applyCombatSetup();
         Rs2Antiban.setActivity(Activity.BARROWS);
+        
+        // Setup special attack configs if enabled
+        if (config.useSpecWeapon()) {
+            Microbot.getSpecialAttackConfigs()
+                .setSpecialAttack(true)
+                .setSpecialAttackWeapon(config.specWeapon())
+                .setMinimumSpecEnergy(config.specWeapon().getEnergyRequired() / 10); // Convert from 1000-based to percentage
+        }
+        
         barrowsScript.run(config, this);
         barrowsScript.outOfPoweredStaffCharges = false;
         barrowsScript.firstRun = true;
@@ -78,6 +87,7 @@ public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
     protected void shutDown() {
         Rs2Antiban.resetAntibanSettings();
         Rs2Antiban.deactivateAntiban();
+        Microbot.getSpecialAttackConfigs().reset();
         barrowsScript.neededRune = "unknown";
         barrowsScript.shutdown();
         overlayManager.remove(barrowsOverlay);

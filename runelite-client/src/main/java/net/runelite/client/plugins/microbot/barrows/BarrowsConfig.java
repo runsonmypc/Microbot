@@ -4,6 +4,7 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.client.config.*;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.util.misc.Rs2Food;
+import net.runelite.client.plugins.microbot.util.misc.SpecialAttackWeaponEnum;
 
 @ConfigGroup("barrows")
 @ConfigInformation("1. Have an inventory setup named Barrows <br><br> 2. Required items: prayer potions or moonlight moth mixes(2), barrows teleports tablets, or teleport to house tablets, food, Catalytic runes (if using wind spells), and a spade.<br /><br /> 3. Spells: Wind: Bolt, Blast, Wave, and Surge. Or Powered staffs: supports any trident, any sceptre, any crystal staff, Tumeken's, and Sanguinesti. <br /><br /> Special thanks to george for adding the barrows dungeon to the walker; and Crannyy for script testing!<br /><br /> Config by Crannyy")
@@ -341,6 +342,76 @@ public interface BarrowsConfig extends Config {
     )
     default boolean enableAntipattern() {
         return true;
+    }
+
+    @ConfigSection(
+            name = "Special Attack Weapon",
+            description = "Configure special attack weapon usage during brother fights",
+            position = 25
+    )
+    String specWeaponSection = "specWeapon";
+
+    @ConfigItem(
+            keyName = "useSpecWeapon",
+            name = "Use Special Attack Weapon",
+            description = "Enable special attack weapon switching during brother fights",
+            position = 26,
+            section = specWeaponSection
+    )
+    default boolean useSpecWeapon() {
+        return false;
+    }
+
+    @ConfigItem(
+            keyName = "specWeaponTargetBrother",
+            name = "Target Brother",
+            description = "Which brother to use special attack weapon on",
+            position = 27,
+            section = specWeaponSection
+    )
+    default BarrowsBrother specWeaponTargetBrother() {
+        return BarrowsBrother.DHAROK;
+    }
+
+    @ConfigItem(
+            keyName = "specWeapon",
+            name = "Special Attack Weapon",
+            description = "Special attack weapon to switch to during brother fights",
+            position = 28,
+            section = specWeaponSection
+    )
+    default SpecialAttackWeaponEnum specWeapon() {
+        return SpecialAttackWeaponEnum.DRAGON_DAGGER;
+    }
+
+    @ConfigItem(
+            keyName = "equipDefender",
+            name = "Equip Defender",
+            description = "Equip a defender with one-handed spec weapons if available",
+            position = 29,
+            section = specWeaponSection
+    )
+    default boolean equipDefender() {
+        return true;
+    }
+
+    enum BarrowsBrother {
+        DHAROK("Dharok the Wretched"),
+        KARIL("Karil the Tainted"),
+        AHRIM("Ahrim the Blighted"),
+        GUTHAN("Guthan the Infested"),
+        TORAG("Torag the Corrupted"),
+        VERAC("Verac the Defiled");
+
+        private final String fullName;
+
+        BarrowsBrother(String fullName) {
+            this.fullName = fullName;
+        }
+
+        public String getFullName() {
+            return fullName;
+        }
     }
 
 }
