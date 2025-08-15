@@ -374,6 +374,21 @@ public class BarrowsScript extends Script {
                                 if(Rs2Dialogue.isInDialogue() && Rs2Dialogue.hasDialogueText("You've found a hidden")){
                                     WhoisTun = brother.name;
                                     Microbot.log(brother.name+" is our tunnel");
+                                    
+                                    // Check if we should enter tunnel immediately (killed 5 brothers)
+                                    int killCount = Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) + 
+                                                   Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) + 
+                                                   Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) + 
+                                                   Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) + 
+                                                   Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) + 
+                                                   Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
+                                    
+                                    if (killCount >= 5) {
+                                        Microbot.log("Killed 5 brothers, entering tunnel immediately");
+                                        dialogueEnterTunnels();
+                                        return;
+                                    }
+                                    
                                     // Restore gear if we swapped for prayer but won't fight here
                                     if(shouldPray) {
                                         disablePrayer();
@@ -443,7 +458,8 @@ public class BarrowsScript extends Script {
                                         drinkPrayerPot();
                                     }
 
-                                    if(Microbot.getClient().getHintArrowNpc() == null){
+                                    if(Microbot.getClient().getHintArrowNpc() == null && !Rs2Player.isInCombat()){
+                                        // Only exit if BOTH hint arrow is gone AND not in combat
                                         break;
                                     }
 
@@ -470,21 +486,7 @@ public class BarrowsScript extends Script {
                             }
                             
                             // at this point the brother should be dead and we should be free to leave.
-                            // If this brother is the tunnel brother, check if we should enter tunnels
-                            if(brother.name.equals(WhoisTun)) {
-                                // Only enter tunnels if we've killed 5 brothers (don't enter on first tunnel encounter)
-                                int killCount = Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) + 
-                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) + 
-                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) + 
-                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) + 
-                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) + 
-                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
-                                
-                                if (killCount >= 5 && Rs2Dialogue.isInDialogue()) {
-                                    dialogueEnterTunnels();
-                                    return;
-                                }
-                            }
+                            // Tunnel entry is now handled immediately when we find the tunnel brother
 
                             leaveTheMound();
                         }
