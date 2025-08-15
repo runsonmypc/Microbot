@@ -450,6 +450,13 @@ public class BarrowsScript extends Script {
                                     }
                                 }
                             }
+                            
+                            // Simple check: is the brother actually dead before leaving?
+                            if (currentBrother != null && !currentBrother.isDead()) {
+                                Microbot.log("Brother still alive after combat ended, retrying!");
+                                continue; // Restart the loop for this brother
+                            }
+                            
                             // at this point the brother should be dead and we should be free to leave.
                             // If this brother is the tunnel brother, check if we should enter tunnels
                             if(brother.name.equals(WhoisTun)) {
@@ -1406,6 +1413,29 @@ public class BarrowsScript extends Script {
             if(skele == null || skele.isDead()){
                 return;
             }
+            
+            // If we're already in combat with something, check if we have enough RP to ignore it
+            if(Rs2Player.isInCombat()){
+                // Check current RP before continuing the fight
+                currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+                targetRP = 870;
+                
+                try {
+                    NPC hintNpc = Microbot.getClient().getHintArrowNpc();
+                    if(hintNpc != null) {
+                        // Brother is still alive, they'll give us ~100 RP
+                        targetRP = 770;  // 770 + 100 from brother = 870
+                    }
+                } catch (Exception e) {
+                    // No hint arrow, no brother alive
+                }
+                
+                if(currentRP >= targetRP){
+                    Microbot.log("Already in combat but have enough RP (" + currentRP + "/" + targetRP + "), ignoring");
+                    return;
+                }
+            }
+            
             if(Rs2Npc.hasLineOfSight(skele)){
                 stopFutureWalker();
                 if(!Rs2Player.isInCombat()){
