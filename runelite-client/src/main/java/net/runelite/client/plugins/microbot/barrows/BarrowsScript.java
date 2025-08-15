@@ -165,7 +165,7 @@ public class BarrowsScript extends Script {
                 if(!inTunnels && shouldBank == false) {
                     for (BarrowsBrothers brother : BarrowsBrothers.values()) {
                         Rs2WorldArea mound = brother.getHumpWP();
-                        NeededPrayer = brother.whatToPray;
+                        // Don't set NeededPrayer here - wait until we're in the mound
                         outOfSupplies(config);
                         if(shouldBank){
                             return;
@@ -254,6 +254,9 @@ public class BarrowsScript extends Script {
                         }
                         if (Rs2Player.getWorldLocation().getPlane() == 3) {
                             Microbot.log("We're in the mound");
+                            
+                            // Set the prayer for this brother now that we're inside
+                            NeededPrayer = brother.whatToPray;
 
                             // Check if we should pray against this specific brother
                             boolean shouldPray = false;
