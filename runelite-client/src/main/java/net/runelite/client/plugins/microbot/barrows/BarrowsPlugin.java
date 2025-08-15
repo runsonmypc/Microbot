@@ -99,6 +99,12 @@ public class BarrowsPlugin extends Plugin implements SchedulablePlugin {
         if (msg.contains("no charges")) {
             BarrowsScript.outOfPoweredStaffCharges = true;
         }
+        
+        // Detect when chest is successfully looted
+        if (msg.contains("Your Barrows chest count is:")) {
+            BarrowsScript.chestLooted = true;
+            Microbot.log("Chest looted! Message detected: " + msg);
+        }
 
     }
 

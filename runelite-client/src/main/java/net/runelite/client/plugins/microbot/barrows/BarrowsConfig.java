@@ -333,4 +333,14 @@ public interface BarrowsConfig extends Config {
         return "";
     }
 
+    @ConfigItem(
+            keyName = "enableAntipattern",
+            name = "Enable Antipattern",
+            description = "Enable antipattern behavior (random prayer activation and mistakes)",
+            position = 24
+    )
+    default boolean enableAntipattern() {
+        return true;
+    }
+
 }

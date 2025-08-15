@@ -49,6 +49,7 @@ public class BarrowsScript extends Script {
     private boolean shouldAttackSkeleton = false;
     private boolean varbitCheckEnabled = true;
     private int tunnelLoopCount = 0;
+    private boolean walkerNeedsBankingAfterChest = false; // Force Walker method to bank after chest
     private WorldPoint FirstLoopTile;
     private Rs2PrayerEnum NeededPrayer;
     int scriptDelay = Rs2Random.between(300,600);
@@ -60,13 +61,16 @@ public class BarrowsScript extends Script {
     private int minForgottenBrews = 0;
     public static boolean outOfPoweredStaffCharges = false;
     public static boolean usingPoweredStaffs = false;
+    public static boolean chestLooted = false;
     
     // Gear swap management for Ahrim
     private Map<EquipmentInventorySlot, String> originalGear = new HashMap<>();
     private boolean gearSwapped = false;
     public static boolean firstRun = false;
+    private BarrowsConfig config;
 
     public boolean run(BarrowsConfig config, BarrowsPlugin plugin) {
+        this.config = config;
         Microbot.enableAutoRunOn = false;
         mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
             try {
@@ -84,7 +88,8 @@ public class BarrowsScript extends Script {
 
                 if(firstRun) {
                     if (!inventorySetup.doesEquipmentMatch()) {
-                        while(!inventorySetup.doesEquipmentMatch()) {
+                        long timeout = System.currentTimeMillis() + 30000; // 30 second timeout
+                        while(!inventorySetup.doesEquipmentMatch() && System.currentTimeMillis() < timeout) {
                             if(!super.isRunning()){ break; }
                             if (Rs2Bank.getNearestBank().getWorldPoint().distanceTo(Rs2Player.getWorldLocation()) > 6) {
                                 Rs2Bank.walkToBank();
@@ -95,6 +100,17 @@ public class BarrowsScript extends Script {
                         }
                     }
                     firstRun = false;
+                    
+                    // Check supplies immediately after first run setup
+                    suppliesCheck(config);
+                    if(shouldBank) {
+                        Microbot.log("Initial supplies check: Need to bank before starting");
+                        // For Walker method, set the flag to ensure proper banking
+                        if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                            walkerNeedsBankingAfterChest = true; // Use same flag to force banking
+                            Microbot.log("Walker method: Forcing initial bank run");
+                        }
+                    }
                 }
 
                 if(barrowsPieces.isEmpty()){
@@ -136,7 +152,13 @@ public class BarrowsScript extends Script {
                     }
                 }
 
-                outOfSupplies(config);
+                // Only check supplies if not in Walker forced banking sequence
+                if(!walkerNeedsBankingAfterChest) {
+                    outOfSupplies(config);
+                } else {
+                    // Keep shouldBank true during Walker banking sequence
+                    shouldBank = true;
+                }
 
                 if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.TELEPORT_TO_HOUSE) {
                     if (!inTunnels && !shouldBank && Rs2Player.getWorldLocation().distanceTo(new WorldPoint(3573, 3296, 0)) > 60) {
@@ -154,15 +176,20 @@ public class BarrowsScript extends Script {
                 
                 // Handle Walker method - walk from bank to Barrows
                 if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
-                    if (!inTunnels && !shouldBank && Rs2Player.getWorldLocation().distanceTo(new WorldPoint(3573, 3296, 0)) > 60) {
-                        // Use Rs2Walker to path to Barrows area
-                        WorldPoint barrowsCenter = new WorldPoint(3565, 3288, 0);
-                        Rs2Walker.walkTo(barrowsCenter);
-                        sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(barrowsCenter) < 30, Rs2Random.between(30000, 60000));
+                    // ABSOLUTE BLOCK: If we need to bank after chest, DO NOT go to Barrows
+                    if(walkerNeedsBankingAfterChest) {
+                        Microbot.log("Walker: Must complete banking first - skipping Barrows walk");
+                        // Don't return - let the code continue to the banking section
+                    } else if (!inTunnels && !shouldBank && Rs2Player.getWorldLocation().distanceTo(new WorldPoint(3573, 3296, 0)) > 60) {
+                        // Only walk to Barrows if NOT in forced banking sequence
+                        // Use Rs2Walker to path to Dharok's mound
+                        WorldPoint dharokMound = new WorldPoint(3573, 3296, 0);
+                        Rs2Walker.walkTo(dharokMound);
+                        sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(dharokMound) < 30, Rs2Random.between(30000, 60000));
                     }
                 }
 
-                if(!inTunnels && shouldBank == false) {
+                if(!inTunnels && shouldBank == false && !walkerNeedsBankingAfterChest) {
                     // Check if 5 brothers are killed - if so, identify the tunnel brother
                     Microbot.log("WhoisTun: " + WhoisTun + ", varbitCheckEnabled: " + varbitCheckEnabled);
                     if(WhoisTun.equals("Unknown") && varbitCheckEnabled) {
@@ -282,6 +309,10 @@ public class BarrowsScript extends Script {
                                 handlePOH(config);
                             }
 
+                            if (mound == null) {
+                                Microbot.log("Error: mound is null for brother " + brother.getName());
+                                continue;
+                            }
                             goToTheMound(mound);
 
                             digIntoTheMound(mound);
@@ -289,6 +320,9 @@ public class BarrowsScript extends Script {
                         }
                         if (Rs2Player.getWorldLocation().getPlane() == 3) {
                             Microbot.log("We're in the mound");
+                            
+                            // Disable all prayers first to ensure clean state
+                            Rs2Prayer.disableAllPrayers();
                             
                             // Set the prayer for this brother now that we're inside
                             NeededPrayer = brother.whatToPray;
@@ -319,7 +353,8 @@ public class BarrowsScript extends Script {
                             GameObject sarc = Rs2GameObject.get("Sarcophagus");
                             Rs2NpcModel currentBrother = null;
                             Microbot.log("Found the Sarcophagus");
-                            while(currentBrother == null) {
+                            long sarcTimeout = System.currentTimeMillis() + 30000; // 30 second timeout
+                            while(currentBrother == null && System.currentTimeMillis() < sarcTimeout) {
                                 Microbot.log("Searching the Sarcophagus");
                                 if (!super.isRunning()) {
                                     break;
@@ -334,6 +369,13 @@ public class BarrowsScript extends Script {
                                 if(Rs2Dialogue.isInDialogue() && Rs2Dialogue.hasDialogueText("You've found a hidden")){
                                     WhoisTun = brother.name;
                                     Microbot.log(brother.name+" is our tunnel");
+                                    // Restore gear if we swapped for prayer but won't fight here
+                                    if(shouldPray) {
+                                        disablePrayer();
+                                        restoreOriginalGear();
+                                    }
+                                    // Reset NeededPrayer since we're not fighting this brother here
+                                    NeededPrayer = null;
                                     break;
                                 }
 
@@ -350,7 +392,8 @@ public class BarrowsScript extends Script {
                             }
                             //The ghost should be here assuming its not the tunnel.
                             if(currentBrother != null && !Rs2Player.isInCombat()){
-                                while(!Rs2Player.isInCombat()){
+                                long attackTimeout = System.currentTimeMillis() + 15000; // 15 second timeout
+                                while(!Rs2Player.isInCombat() && System.currentTimeMillis() < attackTimeout){
                                     if (!super.isRunning()) {
                                         break;
                                     }
@@ -362,15 +405,22 @@ public class BarrowsScript extends Script {
                             //fighting
                             if(Rs2Player.isInCombat()){
                                 Microbot.log("Fighting the brother.");
-                                while(!currentBrother.isDead()){
+                                long combatTimeout = System.currentTimeMillis() + 120000; // 2 minute timeout
+                                while(currentBrother != null && !currentBrother.isDead() && Rs2Player.isInCombat() && System.currentTimeMillis() < combatTimeout){
                                     if (!super.isRunning()) {
                                         break;
                                     }
 
                                     // Re-check if we should pray (using existing shouldPray variable)
                                     if (shouldPray) {
+                                        // Ensure we're using the correct prayer for THIS brother
+                                        NeededPrayer = brother.whatToPray;
                                         activatePrayer();
                                     }
+
+                                    // Antipattern behavior - only inside crypts during combat
+                                    antiPatternEnableWrongPrayer();
+                                    antiPatternActivatePrayer();
 
                                     sleep(500,1500);
                                     eatFood();
@@ -440,12 +490,18 @@ public class BarrowsScript extends Script {
                                 handlePOH(config);
                             }
 
+                            if (tunnelMound == null) {
+                                Microbot.log("Error: tunnelMound is null for brother " + brother.getName());
+                                break;
+                            }
+                            
                             // Walk to the mound
                             goToTheMound(tunnelMound);
 
                             digIntoTheMound(tunnelMound);
 
-                            while(!Rs2Dialogue.isInDialogue()) {
+                            long dialogueTimeout = System.currentTimeMillis() + 30000; // 30 second timeout
+                            while(!Rs2Dialogue.isInDialogue() && System.currentTimeMillis() < dialogueTimeout) {
                                 GameObject sarc = Rs2GameObject.get("Sarcophagus");
 
                                 if (!super.isRunning()) {
@@ -502,110 +558,318 @@ public class BarrowsScript extends Script {
                     outOfSupplies(config);
                     gainRP(config);
 
-                    if(!Rs2Player.isMoving()) {
+                    try {
+                        if(!Rs2Player.isMoving()) {
+                            startWalkingToTheChest();
+                        }
+                    } catch (Exception e) {
+                        Microbot.log("Error checking movement status: " + e.getMessage());
+                        // Try to start walking anyway if we can't check movement
                         startWalkingToTheChest();
                     }
 
                     solvePuzzle();
                     checkForBrother(config);
+                    
+                    // If chest was already looted (via game message), handle teleporting out
+                    if(chestLooted) {
+                        // Check if there's still a brother to kill
+                        boolean hasBrother = false;
+                        try {
+                            hasBrother = (Microbot.getClient().getHintArrowNpc() != null);
+                        } catch (Exception e) {
+                            // No hint arrow
+                        }
+                        
+                        if(hasBrother) {
+                            Microbot.log("Chest looted but brother still alive - need to kill brother first");
+                            // Don't proceed with teleporting - let the normal flow handle the brother
+                        } else {
+                            Microbot.log("Chest already looted, proceeding to leave tunnels");
+                            
+                            // For Walker method, ALWAYS bank after chest looting
+                            if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                shouldBank = true;
+                                walkerNeedsBankingAfterChest = true; // FORCE banking sequence
+                                Microbot.log("Walker method - forcing bank after chest loot");
+                            } else {
+                                // For other methods, check if we need to bank
+                                suppliesCheck(config);
+                            }
+                            
+                            // Reset for next run
+                            ChestsOpened++;
+                            WhoisTun = "Unknown";
+                            inTunnels = false;
+                            chestLooted = false; // Reset for next run
+                            
+                            // Disable all prayers before leaving tunnels
+                            Rs2Prayer.disableAllPrayers();
+                            
+                            Microbot.log("Leaving tunnels after chest loot");
+                            
+                            // Now leave - always teleport to Ferox if we need to bank
+                            if(shouldBank) {
+                            // Need to bank - ALWAYS teleport to Ferox using Ring of Dueling
+                            if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                Microbot.log("Teleporting to bank.");
+                                sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
+                                sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
+                                // Wait to ensure we're out of tunnels
+                                sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(3000, 5000));
+                            }
+                        } else {
+                            // Don't need to bank - use configured teleport method
+                            if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.BARROWS_TELEPORT){
+                                if(Rs2Inventory.interact("Barrows teleport", "Break")) {
+                                    Microbot.log("Using Barrows teleport");
+                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
+                                }
+                            } else if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.TELEPORT_TO_HOUSE) {
+                                if(Rs2Inventory.interact("Teleport to house", "Inside")) {
+                                    Microbot.log("Using house teleport");
+                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
+                                    handlePOH(config);
+                                }
+                            } else if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                // This should never execute because Walker always banks after chest
+                                // But keep it as a safety fallback
+                                Microbot.log("WARNING: Walker method without banking - this shouldn't happen");
+                                if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                    Microbot.log("Teleporting to Ferox anyway");
+                                    sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
+                                    sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
+                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(3000, 5000));
+                                }
+                                shouldBank = true; // Force banking just in case
+                            }
+                        }
+                            
+                            // Important: return here to exit the current loop iteration and restart fresh
+                            return;
+                        }
+                    }
 
-                    if(Rs2GameObject.findObjectById(20973) != null && Rs2GameObject.hasLineOfSight(Rs2GameObject.findObjectById(20973))){
+                    if(Rs2GameObject.findObjectById(20973) != null && Rs2GameObject.hasLineOfSight(Rs2GameObject.findObjectById(20973)) && !chestLooted){
                         //chest ID: 20973
                         stopFutureWalker();
 
                         TileObject chest = Rs2GameObject.findObjectById(20973);
 
                         if(Rs2GameObject.interact(chest, "Open")){
-                            sleepUntil(()-> Microbot.getClient().getHintArrowNpc()!=null && Microbot.getClient().getHintArrowNpc().getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= 5, Rs2Random.between(4000,6000));
+                            // Only wait for hint arrow if we haven't killed all 6 brothers
+                            int totalKilled = Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) + 
+                                            Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) + 
+                                            Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) + 
+                                            Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) + 
+                                            Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) + 
+                                            Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
+                            
+                            if (totalKilled < 6) {
+                                // Wait for final brother to spawn
+                                sleepUntil(()-> {
+                                    try {
+                                        NPC arrow = Microbot.getClient().getHintArrowNpc();
+                                        return arrow != null && arrow.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= 5;
+                                    } catch (Exception e) {
+                                        return false;
+                                    }
+                                }, Rs2Random.between(4000,6000));
+                            } else {
+                                // All brothers killed, just wait a bit for chest to open
+                                sleep(500, 1000);
+                            }
                         }
 
                         checkForBrother(config);
 
-                        if(Microbot.getClient().getHintArrowNpc()==null) {
-                            int io = 0;
-                            while (io < 2) {
-
+                        // After dealing with any brother, try to loot the chest
+                        // Re-check for hint arrow in case another brother spawned
+                        boolean hasHintArrow = false;
+                        try {
+                            hasHintArrow = (Microbot.getClient().getHintArrowNpc() != null);
+                        } catch (Exception e) {
+                            // No hint arrow
+                        }
+                        
+                        // If there's still a brother, handle it
+                        if(hasHintArrow) {
+                            checkForBrother(config);
+                            // Re-check again after second attempt
+                            try {
+                                hasHintArrow = (Microbot.getClient().getHintArrowNpc() != null);
+                            } catch (Exception e) {
+                                hasHintArrow = false;
+                            }
+                        }
+                        
+                        if(!hasHintArrow) {
+                            // Reset the flag before we start looting
+                            chestLooted = false;
+                            
+                            // Keep trying to loot the chest until we get the game message
+                            long lootTimeout = System.currentTimeMillis() + 30000; // 30 second timeout
+                            int attempts = 0;
+                            while (!chestLooted && System.currentTimeMillis() < lootTimeout) {
                                 if (!super.isRunning()) {
                                     break;
                                 }
-
-                                if (Rs2GameObject.interact(chest, "Search")) {
-                                    sleep(500, 1500);
-                                }
-
-                                if (Rs2Widget.hasWidget("Barrows chest")) {
+                                
+                                attempts++;
+                                if (attempts > 10) {
+                                    Microbot.log("Failed to loot chest after 10 attempts, breaking out");
                                     break;
                                 }
-
-                                io++;
+                                
+                                // Try to search the chest
+                                if (Rs2GameObject.interact(chest, "Search")) {
+                                    // Wait a bit for the loot to appear and message to trigger
+                                    sleep(1000, 2000);
+                                }
+                                
+                                // Check if we got the loot message
+                                if (chestLooted) {
+                                    Microbot.log("Chest successfully looted!");
+                                    break;
+                                }
+                                
+                                // Small delay before retrying
+                                sleep(500, 1000);
                             }
+                        }
+                        
+                        // Check if we successfully looted
+                        if(chestLooted) {
                             //we looted the chest time to reset
+                            chestLooted = false; // Reset for next run
                             
-                            // After looting, check if we need to bank for the NEXT run
-                            suppliesCheck(config);
+                            // For Walker method, ALWAYS bank after chest looting
+                            if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                shouldBank = true;
+                                walkerNeedsBankingAfterChest = true; // FORCE banking sequence
+                                Microbot.log("Walker method - forcing bank after chest loot");
+                            } else {
+                                // For other methods, check if we need to bank
+                                suppliesCheck(config);
+                            }
                             
                             // Reset for next run
                             ChestsOpened++;
                             WhoisTun = "Unknown";
                             inTunnels = false;
                             
-                            // Now leave - if we need to bank, we'll handle it outside tunnels
+                            // Disable all prayers before leaving tunnels
+                            Rs2Prayer.disableAllPrayers();
+                            
+                            Microbot.log("Chest looted, leaving tunnels");
+                            
+                            // Now leave - always teleport to Ferox if we need to bank
                             if(shouldBank) {
-                                // Need to bank - teleport to Ferox
+                                // Need to bank - ALWAYS teleport to Ferox using Ring of Dueling
                                 if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
                                     Microbot.log("Looted chest, teleporting to bank.");
                                     sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
                                     sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
+                                    // Wait to ensure we're out of tunnels
+                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(3000, 5000));
                                 }
                             } else {
                                 // Don't need to bank - use configured teleport method
                                 if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.BARROWS_TELEPORT){
-                                    Rs2Inventory.interact("Barrows teleport", "Break");
-                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
+                                    if(Rs2Inventory.interact("Barrows teleport", "Break")) {
+                                        Microbot.log("Using Barrows teleport");
+                                        sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
+                                    }
                                 } else if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.TELEPORT_TO_HOUSE) {
-                                    Rs2Inventory.interact("Teleport to house", "Inside");
-                                    sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
-                                    handlePOH(config);
+                                    if(Rs2Inventory.interact("Teleport to house", "Inside")) {
+                                        Microbot.log("Using house teleport");
+                                        sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
+                                        handlePOH(config);
+                                    }
                                 } else if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
-                                    // Use staircase to leave tunnels
-                                    leaveTheMound();
+                                    // This should never execute because Walker always banks after chest
+                                    // But keep it as a safety fallback
+                                    Microbot.log("WARNING: Walker method without banking - this shouldn't happen");
+                                    if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                        Microbot.log("Teleporting to Ferox anyway");
+                                        sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
+                                        sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
+                                        sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(3000, 5000));
+                                    }
+                                    shouldBank = true; // Force banking just in case
                                 }
                             }
-
+                            
+                            // Important: return here to exit the current loop iteration and restart fresh
+                            return;
                         }
                     }
                     tunnelLoopCount++;
                 }
 
-                if(shouldBank){
+                if(shouldBank || walkerNeedsBankingAfterChest){
                     if(!Rs2Bank.isOpen()){
                         //stop the walker
                         stopFutureWalker();
-                        //tele out
-                        outOfSupplies(config);
-                        //walk to and open the bank
-                        Rs2Bank.walkToBankAndUseBank(BankLocation.FEROX_ENCLAVE);
+                        
+                        // Use the proper BankLocation method to walk to and open Ferox bank
+                        if(walkerNeedsBankingAfterChest) {
+                            Microbot.log("Walker: Forced banking sequence after chest loot");
+                        }
+                        Microbot.log("Walking to and opening Ferox bank");
+                        if(Rs2Bank.walkToBankAndUseBank(BankLocation.FEROX_ENCLAVE)) {
+                            // Wait for bank to actually open
+                            sleepUntil(() -> Rs2Bank.isOpen(), Rs2Random.between(3000, 5000));
+                        } else {
+                            // Fallback: if we're already at Ferox, try direct open
+                            WorldPoint feroxLocation = new WorldPoint(3150, 3635, 0);
+                            if(Rs2Player.getWorldLocation().distanceTo(feroxLocation) < 30) {
+                                Microbot.log("Already at Ferox, trying direct bank open");
+                                Rs2Bank.openBank();
+                                sleepUntil(() -> Rs2Bank.isOpen(), Rs2Random.between(3000, 5000));
+                            } else {
+                                // Not at Ferox, teleport there
+                                outOfSupplies(config);
+                            }
+                        }
+                        
                         //unlock
                         plugin.getLockCondition().unlock();
                     } else {
+                        // Bank is open - handle banking
                         Rs2Food ourfood = config.food();
                         int ourFoodsID = ourfood.getId();
                         String ourfoodsname = ourfood.getName();
-
-                        if(Rs2Inventory.isFull() || Rs2Inventory.contains(it->it!=null&&it.getName().contains("'s") || it.getName().contains("Coins"))){
-                            if(Rs2Inventory.contains(it->it!=null&&it.getName().contains("'s"))){
-                                Rs2ItemModel piece = Rs2Inventory.get(it->it!=null&&it.getName().contains("'s"));
-
-                                if(piece!=null){
-                                    barrowsPieces.add(piece.getName());
-                                    if(barrowsPieces.contains("Nothing yet.")){
-                                        barrowsPieces.remove("Nothing yet.");
-                                    }
+                        
+                        // First, track any Barrows pieces we got
+                        if(Rs2Inventory.contains(it->it!=null&&it.getName().contains("'s"))){
+                            Rs2ItemModel piece = Rs2Inventory.get(it->it!=null&&it.getName().contains("'s"));
+                            if(piece!=null){
+                                barrowsPieces.add(piece.getName());
+                                if(barrowsPieces.contains("Nothing yet.")){
+                                    barrowsPieces.remove("Nothing yet.");
                                 }
-
                             }
-                            Rs2Bank.depositAllExcept(neededRune, "Moonlight moth", "Moonlight moth mix (2)", "Teleport to house", "Spade", "Prayer potion(4)", "Prayer potion(3)", "Forgotten brew(4)", "Forgotten brew(3)", "Barrows teleport",
-                                    ourfoodsname);
+                        }
+                        
+                        // Use inventory setup to load correct items
+                        Microbot.log("Loading inventory setup for banking");
+                        inventorySetup.loadInventory();
+                        
+                        // Wait a bit for inventory to load
+                        sleep(1000, 2000);
+                        
+                        // Ensure we have a ring of dueling equipped
+                        if(Rs2Equipment.get(EquipmentInventorySlot.RING) == null || !Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling")) {
+                            if(Rs2Bank.count(ItemID.RING_OF_DUELING8) > 0) {
+                                Rs2Bank.withdrawAndEquip(ItemID.RING_OF_DUELING8);
+                                sleepUntil(() -> Rs2Equipment.get(EquipmentInventorySlot.RING) != null && 
+                                         Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling"), 
+                                         Rs2Random.between(3000, 5000));
+                            } else {
+                                Microbot.log("Out of rings of dueling");
+                                super.shutdown();
+                            }
                         }
 
                         int howtoBank = Rs2Random.between(0,100);
@@ -763,12 +1027,25 @@ public class BarrowsScript extends Script {
                             }
                         }
 
+                        // Always check supplies after banking to update shouldBank status
                         suppliesCheck(config);
 
-                        if(!shouldBank){
+                        // Handle Walker forced banking completion
+                        if(walkerNeedsBankingAfterChest && !shouldBank) {
+                            // We have supplies now, complete the sequence
+                            Microbot.log("Walker: Supplies restocked, completing banking sequence");
+                            closeBank();
+                            if(!Rs2Bank.isOpen()) {
+                                reJfount();
+                                walkerNeedsBankingAfterChest = false;
+                                Microbot.log("Walker: Banking and pool complete, ready for next run");
+                            }
+                        } else if(!shouldBank){
+                            // Normal banking completion
                             closeBank();
                             if(!Rs2Bank.isOpen()){
                                 reJfount();
+                                
                                 if (!config.selectedToBarrowsTPMethod().name().equals("Walker")) {
                                     handlePOH(config);
                                 }
@@ -904,12 +1181,6 @@ public class BarrowsScript extends Script {
                 break;
             }
 
-            //antipattern turn on prayer early
-            antiPatternEnableWrongPrayer();
-
-            antiPatternActivatePrayer();
-            //antipattern
-
             if (Rs2Inventory.contains("Spade")) {
                 if (Rs2Inventory.interact("Spade", "Dig")) {
                     sleepUntil(() -> Rs2Player.getWorldLocation().getPlane() == 3, Rs2Random.between(3000, 5000));
@@ -931,11 +1202,6 @@ public class BarrowsScript extends Script {
             if (!super.isRunning()) {
                 break;
             }
-
-            //antipattern turn on prayer early
-            antiPatternEnableWrongPrayer();
-
-            antiPatternActivatePrayer();
 
             antiPatternDropVials();
             //antipattern
@@ -1018,7 +1284,10 @@ public class BarrowsScript extends Script {
                     }
                 }
                 if(Rs2Player.isInCombat()){
-                    while(Rs2Player.isInCombat()){
+                    long combatTimeout = System.currentTimeMillis() + 60000; // 60 second timeout
+                    boolean inCombat = true;
+                    
+                    while(inCombat && System.currentTimeMillis() < combatTimeout){
                         Microbot.log("Fighting the Skeleton.");
                         if (!super.isRunning()) {
                             break;
@@ -1033,13 +1302,21 @@ public class BarrowsScript extends Script {
                             break;
                         }
 
-                        if(!Rs2Player.isInCombat()){
-                            Microbot.log("Breaking out we're no longer in combat.");
+                        // Check combat status with error handling
+                        try {
+                            inCombat = Rs2Player.isInCombat();
+                            if(!inCombat){
+                                Microbot.log("Breaking out we're no longer in combat.");
+                                break;
+                            }
+                        } catch (Exception e) {
+                            Microbot.log("Error checking combat status, breaking out: " + e.getMessage());
                             break;
                         }
 
-                        if(skele.isDead()){
-                            Microbot.log("Breaking out the skeleton is dead.");
+                        // Null check before accessing skele
+                        if(skele == null || skele.isDead()){
+                            Microbot.log("Breaking out the skeleton is null or dead.");
                             break;
                         }
 
@@ -1048,12 +1325,17 @@ public class BarrowsScript extends Script {
                             break;
                         }
 
-                        if(Microbot.getClient().getHintArrowNpc()!=null) {
-                            Rs2NpcModel barrowsbrother = new Rs2NpcModel(Microbot.getClient().getHintArrowNpc());
-                            if(Rs2Npc.hasLineOfSight(barrowsbrother)) {
-                                Microbot.log("The brother is here.");
-                                break;
+                        try {
+                            NPC hintNpc = Microbot.getClient().getHintArrowNpc();
+                            if(hintNpc != null) {
+                                Rs2NpcModel barrowsbrother = new Rs2NpcModel(hintNpc);
+                                if(Rs2Npc.hasLineOfSight(barrowsbrother)) {
+                                    Microbot.log("The brother is here.");
+                                    break;
+                                }
                             }
+                        } catch (Exception e) {
+                            // No hint arrow, continue fighting skeleton
                         }
 
                     }
@@ -1206,7 +1488,8 @@ public class BarrowsScript extends Script {
     public void activatePrayer(){
         if(!Rs2Prayer.isPrayerActive(NeededPrayer)){
             Microbot.log("Turning on Prayer.");
-            while(!Rs2Prayer.isPrayerActive(NeededPrayer)){
+            long prayerTimeout = System.currentTimeMillis() + 10000; // 10 second timeout
+            while(!Rs2Prayer.isPrayerActive(NeededPrayer) && System.currentTimeMillis() < prayerTimeout){
                 if (!super.isRunning()) {
                     break;
                 }
@@ -1221,8 +1504,13 @@ public class BarrowsScript extends Script {
         }
     }
     public void antiPatternEnableWrongPrayer(){
+        // Only execute antipattern if enabled in config and we're inside a crypt (plane 3)
+        if(!config.enableAntipattern() || Rs2Player.getWorldLocation().getPlane() != 3){
+            return;
+        }
+        
         if(NeededPrayer != null && !Rs2Prayer.isPrayerActive(NeededPrayer)){
-            if(Rs2Random.between(0,100) <= Rs2Random.between(1,4)) {
+            if(Rs2Random.between(0,100) <= Rs2Random.between(1,2)) { // Reduced from 1-4% to 1-2%
                 Rs2PrayerEnum wrongPrayer = null;
                 int random = Rs2Random.between(0,100);
                 if(random <= 50){
@@ -1241,8 +1529,13 @@ public class BarrowsScript extends Script {
         }
     }
     public void antiPatternActivatePrayer(){
+        // Only execute antipattern if enabled in config and we're inside a crypt (plane 3)
+        if(!config.enableAntipattern() || Rs2Player.getWorldLocation().getPlane() != 3){
+            return;
+        }
+        
         if(NeededPrayer != null && !Rs2Prayer.isPrayerActive(NeededPrayer)){
-            if(Rs2Random.between(0,100) <= Rs2Random.between(1,8)) {
+            if(Rs2Random.between(0,100) <= Rs2Random.between(1,3)) { // Reduced from 1-8% to 1-3%
                 drinkPrayerPot();
                 Rs2Prayer.toggle(NeededPrayer);
                 sleep(0, 750);
@@ -1332,7 +1625,13 @@ public class BarrowsScript extends Script {
         }
     }
     public void checkForBrother(BarrowsConfig config){
-        NPC hintArrow = Microbot.getClient().getHintArrowNpc();
+        NPC hintArrow = null;
+        try {
+            hintArrow = Microbot.getClient().getHintArrowNpc();
+        } catch (NullPointerException e) {
+            // Client internal NPE when no hint arrow exists
+            return;
+        }
         Rs2NpcModel currentBrother = null;
         if (hintArrow != null) {
             currentBrother = new Rs2NpcModel(hintArrow);
@@ -1368,16 +1667,33 @@ public class BarrowsScript extends Script {
                     // Swap gear when praying in tunnels
                     swapGearForPrayer(config);
                     
+                    // Disable wrong prayers first
+                    if (neededprayer == Rs2PrayerEnum.PROTECT_MELEE) {
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MAGIC)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC);
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE);
+                    } else if (neededprayer == Rs2PrayerEnum.PROTECT_MAGIC) {
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MELEE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE);
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE);
+                    } else if (neededprayer == Rs2PrayerEnum.PROTECT_RANGE) {
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MELEE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE);
+                        if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MAGIC)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC);
+                    }
+                    
                     //activate prayer
                     if(!Rs2Prayer.isPrayerActive(neededprayer)){
                         Microbot.log("Turning on Prayer.");
-                        while(!Rs2Prayer.isPrayerActive(neededprayer)){
+                        long prayerTimeout = System.currentTimeMillis() + 10000; // 10 second timeout
+                        while(!Rs2Prayer.isPrayerActive(neededprayer) && System.currentTimeMillis() < prayerTimeout){
                             if (!super.isRunning()) {
                                 break;
                             }
                             // Only drink prayer pots if in combat
-                            if (Rs2Player.isInCombat()) {
-                                drinkPrayerPot();
+                            try {
+                                if (Rs2Player.isInCombat()) {
+                                    drinkPrayerPot();
+                                }
+                            } catch (Exception e) {
+                                Microbot.log("Error checking combat status: " + e.getMessage());
                             }
                             Rs2Prayer.toggle(neededprayer);
                             sleep(0,750);
@@ -1392,7 +1708,8 @@ public class BarrowsScript extends Script {
                 
                 //fight brother - always fight regardless of prayer settings
                 if(currentBrother != null && !Rs2Player.isInCombat()){
-                    while(!Rs2Player.isInCombat()){
+                    long attackTimeout = System.currentTimeMillis() + 15000; // 15 second timeout
+                    while(!Rs2Player.isInCombat() && System.currentTimeMillis() < attackTimeout){
                         if (!super.isRunning()) {
                             break;
                         }
@@ -1402,19 +1719,32 @@ public class BarrowsScript extends Script {
                     }
                 }
                 //fighting
-                    while(Microbot.getClient().getHintArrowNpc() != null){
+                    long fightTimeout = System.currentTimeMillis() + 120000; // 2 minute timeout
+                    // Re-check hint arrow since it may have changed
+                    try {
+                        hintArrow = Microbot.getClient().getHintArrowNpc();
+                    } catch (Exception e) {
+                        Microbot.log("Error getting hint arrow: " + e.getMessage());
+                        hintArrow = null;
+                    }
+                    
+                    while(hintArrow != null && System.currentTimeMillis() < fightTimeout){
                         Microbot.log("Fighting the brother.");
                         if (!super.isRunning()) {
                             break;
                         }
-                        if(!Rs2Npc.hasLineOfSight(currentBrother)){
+                        if(currentBrother == null || !Rs2Npc.hasLineOfSight(currentBrother)){
                             break;
                         }
                         sleep(750,1500);
                         
                         // Only drink prayer pots if in combat and using prayer
-                        if (Rs2Player.isInCombat() && shouldPray) {
-                            drinkPrayerPot();
+                        try {
+                            if (Rs2Player.isInCombat() && shouldPray) {
+                                drinkPrayerPot();
+                            }
+                        } catch (Exception e) {
+                            Microbot.log("Error checking combat/prayer: " + e.getMessage());
                         }
                         
                         eatFood();
@@ -1423,14 +1753,31 @@ public class BarrowsScript extends Script {
                         drinkforgottonbrew();
 
                         if(shouldPray && !Rs2Prayer.isPrayerActive(neededprayer)){
+                            // Disable wrong prayers first
+                            if (neededprayer == Rs2PrayerEnum.PROTECT_MELEE) {
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MAGIC)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC);
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE);
+                            } else if (neededprayer == Rs2PrayerEnum.PROTECT_MAGIC) {
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MELEE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE);
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_RANGE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_RANGE);
+                            } else if (neededprayer == Rs2PrayerEnum.PROTECT_RANGE) {
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MELEE)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MELEE);
+                                if (Rs2Prayer.isPrayerActive(Rs2PrayerEnum.PROTECT_MAGIC)) Rs2Prayer.toggle(Rs2PrayerEnum.PROTECT_MAGIC);
+                            }
+                            
                             Microbot.log("Turning on Prayer.");
-                            while(!Rs2Prayer.isPrayerActive(neededprayer)){
+                            long prayerTimeout2 = System.currentTimeMillis() + 10000; // 10 second timeout
+                            while(!Rs2Prayer.isPrayerActive(neededprayer) && System.currentTimeMillis() < prayerTimeout2){
                                 if (!super.isRunning()) {
                                     break;
                                 }
                                 // Only drink prayer pots if in combat
-                                if (Rs2Player.isInCombat()) {
-                                    drinkPrayerPot();
+                                try {
+                                    if (Rs2Player.isInCombat()) {
+                                        drinkPrayerPot();
+                                    }
+                                } catch (Exception e) {
+                                    Microbot.log("Error checking combat: " + e.getMessage());
                                 }
                                 Rs2Prayer.toggle(neededprayer);
                                 sleep(0,750);
@@ -1442,23 +1789,39 @@ public class BarrowsScript extends Script {
                             }
                         }
 
-                        if(!Rs2Player.isInCombat()){
-                            if(Microbot.getClient().getHintArrowNpc() == null) {
-                                // if we're not in combat and the brother isn't there.
-                                Microbot.log("Breaking out hint arrow is null.");
-                                break;
-                            } else {
-                                // if we're not in combat and the brother is there.
-                                Microbot.log("Attacking the brother");
-                                Rs2Npc.interact(currentBrother, "Attack");
-                                sleepUntil(()-> Rs2Player.isInCombat(), Rs2Random.between(3000,6000));
+                        // Re-check hint arrow at end of loop
+                        try {
+                            hintArrow = Microbot.getClient().getHintArrowNpc();
+                        } catch (Exception e) {
+                            Microbot.log("Error updating hint arrow: " + e.getMessage());
+                            hintArrow = null;
+                        }
+                        
+                        try {
+                            if(!Rs2Player.isInCombat()){
+                                if(hintArrow == null) {
+                                    // if we're not in combat and the brother isn't there.
+                                    Microbot.log("Breaking out hint arrow is null.");
+                                    break;
+                                } else {
+                                    // if we're not in combat and the brother is there.
+                                    Microbot.log("Attacking the brother");
+                                    if (currentBrother != null) {
+                                        Rs2Npc.interact(currentBrother, "Attack");
+                                        sleepUntil(()-> Rs2Player.isInCombat(), Rs2Random.between(3000,6000));
+                                    }
+                                }
                             }
+                        } catch (Exception e) {
+                            Microbot.log("Error checking combat status: " + e.getMessage());
+                            break;
                         }
 
-                        if(currentBrother.isDead()){
+                        if(currentBrother != null && currentBrother.isDead()){
                             Microbot.log("Breaking out the brother is dead.");
-                            // Restore gear if we were praying in tunnels
+                            // Disable prayer and restore gear if we were praying in tunnels
                             if(shouldPray) {
+                                disablePrayer();
                                 restoreOriginalGear();
                             }
                             sleepUntil(()-> Microbot.getClient().getHintArrowNpc() == null, Rs2Random.between(3000,6000));
