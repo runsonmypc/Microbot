@@ -47,6 +47,9 @@ public class FarmingContractPlugin extends Plugin {
     @Setter
     private String status = "Idle";
     
+    @Getter
+    private boolean started = false;
+    
     @Provides
     FarmingContractConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(FarmingContractConfig.class);
@@ -60,13 +63,15 @@ public class FarmingContractPlugin extends Plugin {
             overlayManager.add(overlay);
         }
         
-        script = new FarmingContractScript(this, config, farmingWorld, configManager);
+        started = true;
+        script = new FarmingContractScript(this, config);
         script.run();
     }
     
     @Override
     protected void shutDown() {
         log.info("Stopping Farming Contract plugin");
+        started = false;
         
         if (overlayManager != null) {
             overlayManager.remove(overlay);
@@ -104,14 +109,14 @@ public class FarmingContractPlugin extends Plugin {
         if (msg.contains("completed") && (msg.contains("contract") || msg.contains("farming"))) {
             log.info("Contract completion detected: {}", msg);
             if (script != null) {
-                script.onContractCompleted();
+                script.onChatMessage(event);
             }
         }
         // Also check for the reward message
         else if (msg.contains("jane") && msg.contains("pleased")) {
             log.info("Contract completion detected (Jane pleased): {}", msg);
             if (script != null) {
-                script.onContractCompleted();
+                script.onChatMessage(event);
             }
         }
     }
