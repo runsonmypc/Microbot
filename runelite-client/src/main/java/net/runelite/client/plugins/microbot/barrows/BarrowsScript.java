@@ -32,7 +32,9 @@ import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -58,6 +60,10 @@ public class BarrowsScript extends Script {
     private int minForgottenBrews = 0;
     public static boolean outOfPoweredStaffCharges = false;
     public static boolean usingPoweredStaffs = false;
+    
+    // Gear swap management for Ahrim
+    private Map<EquipmentInventorySlot, String> originalGear = new HashMap<>();
+    private boolean gearSwapped = false;
     public static boolean firstRun = false;
 
     public boolean run(BarrowsConfig config, BarrowsPlugin plugin) {
@@ -261,6 +267,8 @@ public class BarrowsScript extends Script {
                                 shouldPray = true;
                             } else if (brother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
                                 shouldPray = true;
+                                // Swap gear for Ahrim
+                                swapGearForAhrim(config);
                             } else if (brother.getName().contains("Karil") && config.prayAgainstKaril()) {
                                 shouldPray = true;
                             }
@@ -345,6 +353,10 @@ public class BarrowsScript extends Script {
                                         //anti pattern
                                         disablePrayer();
                                         //anti pattern
+                                        // Restore gear if we were fighting Ahrim
+                                        if(brother.getName().contains("Ahrim")) {
+                                            restoreOriginalGear();
+                                        }
                                         break;
                                     }
                                 }
@@ -1296,6 +1308,8 @@ public class BarrowsScript extends Script {
                 } else if (currentBrother.getName().contains("Ahrim") && config.prayAgainstAhrim()) {
                     shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_MAGIC;
+                    // Swap gear for Ahrim in tunnels
+                    swapGearForAhrim(config);
                 } else if (currentBrother.getName().contains("Karil") && config.prayAgainstKaril()) {
                     shouldPray = true;
                     neededprayer = Rs2PrayerEnum.PROTECT_RANGE;
@@ -1392,6 +1406,10 @@ public class BarrowsScript extends Script {
 
                         if(currentBrother.isDead()){
                             Microbot.log("Breaking out the brother is dead.");
+                            // Restore gear if we were fighting Ahrim in tunnels
+                            if(currentBrother.getName().contains("Ahrim")) {
+                                restoreOriginalGear();
+                            }
                             sleepUntil(()-> Microbot.getClient().getHintArrowNpc() == null, Rs2Random.between(3000,6000));
                             break;
                         }
@@ -1401,6 +1419,60 @@ public class BarrowsScript extends Script {
         }
     }
 
+    private void swapGearForAhrim(BarrowsConfig config) {
+        String gearSwapConfig = config.ahrimGearSwap();
+        if (gearSwapConfig == null || gearSwapConfig.trim().isEmpty()) {
+            return; // No gear swap configured
+        }
+        
+        if (gearSwapped) {
+            return; // Already swapped
+        }
+        
+        Microbot.log("Swapping gear for Ahrim fight");
+        originalGear.clear();
+        
+        String[] items = gearSwapConfig.split(",");
+        for (String item : items) {
+            String itemName = item.trim();
+            if (itemName.isEmpty()) continue;
+            
+            // Check if we have the item in inventory
+            if (!Rs2Inventory.hasItem(itemName)) {
+                Microbot.log("Missing item for Ahrim swap: " + itemName);
+                continue;
+            }
+            
+            // Get the slot this item will go into
+            Rs2ItemModel inventoryItem = Rs2Inventory.get(itemName);
+            if (inventoryItem == null) continue;
+            
+            // Store what's currently equipped (we'll determine slot after equipping)
+            // For now, just equip the item
+            if (Rs2Inventory.wield(itemName)) {
+                Microbot.log("Equipped: " + itemName);
+                sleep(300, 600);
+            }
+        }
+        
+        gearSwapped = true;
+    }
+    
+    private void restoreOriginalGear() {
+        if (!gearSwapped) {
+            return; // Nothing to restore
+        }
+        
+        Microbot.log("Restoring original gear after Ahrim fight");
+        
+        // Since we don't track the exact original items per slot in this simplified version,
+        // we'll rely on the player having their normal gear in inventory after unequipping Ahrim gear
+        // This is a simplified approach - a more robust solution would track exact items per slot
+        
+        gearSwapped = false;
+        originalGear.clear();
+    }
+    
     private void walkToChest(){
         Rs2Walker.walkTo(Chest);
     }

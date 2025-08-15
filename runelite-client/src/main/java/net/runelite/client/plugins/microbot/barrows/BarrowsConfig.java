@@ -275,4 +275,22 @@ public interface BarrowsConfig extends Config {
         return true;
     }
 
+    @ConfigSection(
+            name = "Ahrim Gear Swap",
+            description = "Configure gear to swap when fighting Ahrim",
+            position = 21
+    )
+    String ahrimGearSection = "ahrimGear";
+
+    @ConfigItem(
+            keyName = "ahrimGearSwap",
+            name = "Ahrim Gear",
+            description = "Comma-separated list of items to equip when fighting Ahrim (e.g., 'Occult necklace, Tormented bracelet, Wizard boots')",
+            position = 22,
+            section = ahrimGearSection
+    )
+    default String ahrimGearSwap() {
+        return "";
+    }
+
 }
