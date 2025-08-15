@@ -1455,6 +1455,25 @@ public class BarrowsScript extends Script {
             if(Rs2Npc.hasLineOfSight(skele)){
                 stopFutureWalker();
                 if(!Rs2Player.isInCombat()){
+                    // Check RP BEFORE attacking - don't attack if we already have enough
+                    currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+                    targetRP = 870;
+                    
+                    try {
+                        NPC hintNpc = Microbot.getClient().getHintArrowNpc();
+                        if(hintNpc != null) {
+                            // Brother is still alive, they'll give us ~100 RP
+                            targetRP = 770;  // 770 + 100 from brother = 870
+                        }
+                    } catch (Exception e) {
+                        // No hint arrow, no brother alive
+                    }
+                    
+                    if(currentRP >= targetRP){
+                        Microbot.log("Have enough RP (" + currentRP + "/" + targetRP + "), not attacking skeleton");
+                        return;
+                    }
+                    
                     if(Rs2Npc.attack(skele)){
                         sleepUntil(()-> Rs2Player.isInCombat()&&!Rs2Player.isMoving(), Rs2Random.between(4000,8000));
                     }
