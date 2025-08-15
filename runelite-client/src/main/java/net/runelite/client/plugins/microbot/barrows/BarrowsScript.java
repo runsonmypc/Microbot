@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot.barrows;
 
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.pluginscheduler.model.PluginScheduleEntry;
@@ -552,11 +553,69 @@ public class BarrowsScript extends Script {
                     }
                     leaveTheMound();
                     stuckInTunsCheck();
-                    solvePuzzle();
-                    checkForBrother(config);
-                    eatFood();
-                    outOfSupplies(config);
-                    gainRP(config);
+                    
+                    // Check if we're in combat with a non-brother and have enough RP
+                    if(Rs2Player.isInCombat()) {
+                        boolean fightingBrother = false;
+                        try {
+                            NPC hintArrow = Microbot.getClient().getHintArrowNpc();
+                            if(hintArrow != null) {
+                                // There's a brother, check if we're fighting them
+                                fightingBrother = true;
+                            }
+                        } catch (Exception e) {
+                            // No hint arrow
+                        }
+                        
+                        if(!fightingBrother) {
+                            // We're fighting a non-brother (skeleton, etc)
+                            int currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+                            
+                            // Check if brother is still alive
+                            boolean brotherAlive = false;
+                            try {
+                                brotherAlive = (Microbot.getClient().getHintArrowNpc() != null);
+                            } catch (Exception e) {
+                                // No brother
+                            }
+                            
+                            int targetRP = brotherAlive ? 770 : 870;
+                            
+                            if(currentRP >= targetRP) {
+                                Microbot.log("In combat with non-brother but have enough RP (" + currentRP + "), ignoring and continuing to chest");
+                                // Don't engage further, just continue to chest
+                                // Skip gainRP since we have enough
+                            } else {
+                                // We need more RP, let gainRP handle it
+                                gainRP(config);
+                            }
+                        } else {
+                            // Fighting a brother, this is important
+                            checkForBrother(config);
+                        }
+                    } else {
+                        // Not in combat, do normal checks
+                        solvePuzzle();
+                        checkForBrother(config);
+                        eatFood();
+                        outOfSupplies(config);
+                        
+                        // Only gain RP if we need it
+                        int currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+                        boolean brotherAlive = false;
+                        try {
+                            brotherAlive = (Microbot.getClient().getHintArrowNpc() != null);
+                        } catch (Exception e) {
+                            // No brother
+                        }
+                        int targetRP = brotherAlive ? 770 : 870;
+                        
+                        if(currentRP < targetRP) {
+                            gainRP(config);
+                        } else {
+                            Microbot.log("Already have enough RP (" + currentRP + "/" + targetRP + "), skipping skeleton fights");
+                        }
+                    }
 
                     try {
                         if(!Rs2Player.isMoving()) {
@@ -666,15 +725,69 @@ public class BarrowsScript extends Script {
                                             Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
                             
                             if (totalKilled < 6) {
-                                // Wait for final brother to spawn
-                                sleepUntil(()-> {
+                                // Wait for final brother to spawn - shorter wait
+                                sleep(400, 600);
+                                
+                                // IMMEDIATELY check and attack the brother
+                                NPC brotherNpc = null;
+                                try {
+                                    brotherNpc = Microbot.getClient().getHintArrowNpc();
+                                } catch (Exception e) {
+                                    // No hint arrow yet
+                                }
+                                
+                                if(brotherNpc == null) {
+                                    // Wait a bit more for spawn
+                                    sleepUntil(()-> {
+                                        try {
+                                            NPC arrow = Microbot.getClient().getHintArrowNpc();
+                                            return arrow != null && arrow.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= 10;
+                                        } catch (Exception e) {
+                                            return false;
+                                        }
+                                    }, Rs2Random.between(2000, 3000));
+                                    
+                                    // Try again
                                     try {
-                                        NPC arrow = Microbot.getClient().getHintArrowNpc();
-                                        return arrow != null && arrow.getWorldLocation().distanceTo(Rs2Player.getWorldLocation()) <= 5;
+                                        brotherNpc = Microbot.getClient().getHintArrowNpc();
                                     } catch (Exception e) {
-                                        return false;
+                                        // No hint arrow
                                     }
-                                }, Rs2Random.between(4000,6000));
+                                }
+                                
+                                if(brotherNpc != null) {
+                                    Microbot.log("Final brother spawned! Attacking IMMEDIATELY!");
+                                    
+                                    // Force attack the brother right away, ignore skeletons
+                                    Rs2NpcModel brother = new Rs2NpcModel(brotherNpc);
+                                    
+                                    // Attack the brother multiple times to ensure we target them
+                                    for(int i = 0; i < 3; i++) {
+                                        if (!super.isRunning()) break;
+                                        
+                                        if(!Rs2Player.isInCombat() || i > 0) {
+                                            // Attack or re-target to brother
+                                            if(Rs2Npc.interact(brother, "Attack")) {
+                                                Microbot.log("Attacking brother, attempt " + (i + 1));
+                                                sleep(300, 500);
+                                            }
+                                        }
+                                        
+                                        // Check if we're fighting the right target
+                                        if(Rs2Player.isInCombat()) {
+                                            try {
+                                                NPC currentHint = Microbot.getClient().getHintArrowNpc();
+                                                if(currentHint != null) {
+                                                    // Good, brother still alive
+                                                    break;
+                                                }
+                                            } catch (Exception e) {
+                                                // Brother dead
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
                                 // All brothers killed, just wait a bit for chest to open
                                 sleep(500, 1000);
@@ -1267,11 +1380,28 @@ public class BarrowsScript extends Script {
 
     public void gainRP(BarrowsConfig config){
         if(shouldAttackSkeleton){
-            int RP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
-            if(RP>870){
-                Microbot.log("We have enough RP");
+            int currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+            
+            // Check if there's still a brother alive (will give us ~100 RP)
+            boolean brotherAlive = false;
+            try {
+                brotherAlive = (Microbot.getClient().getHintArrowNpc() != null);
+            } catch (Exception e) {
+                // No hint arrow, no brother
+            }
+            
+            // Calculate target RP considering if brother is still alive
+            int targetRP = 870;
+            if(brotherAlive) {
+                // Brother will give us about 100 RP, so we need less from skeletons
+                targetRP = 770;  // 770 + 100 from brother = 870
+            }
+            
+            if(currentRP >= targetRP){
+                Microbot.log("We have enough RP (" + currentRP + "/" + targetRP + ")");
                 return;
             }
+            
             Rs2NpcModel skele = Rs2Npc.getNpc("Skeleton");
             if(skele == null || skele.isDead()){
                 return;
@@ -1320,22 +1450,29 @@ public class BarrowsScript extends Script {
                             break;
                         }
 
-                        if(Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL)>870){
-                            Microbot.log("Breaking out we have enough RP.");
-                            break;
-                        }
-
+                        // Smart RP checking - account for brother if still alive
+                        currentRP = Microbot.getVarbitValue(Varbits.BARROWS_REWARD_POTENTIAL);
+                        targetRP = 870;
+                        
                         try {
                             NPC hintNpc = Microbot.getClient().getHintArrowNpc();
                             if(hintNpc != null) {
+                                // Brother is still alive, they'll give us ~100 RP
+                                targetRP = 770;  // 770 + 100 from brother = 870
+                                
                                 Rs2NpcModel barrowsbrother = new Rs2NpcModel(hintNpc);
                                 if(Rs2Npc.hasLineOfSight(barrowsbrother)) {
-                                    Microbot.log("The brother is here.");
+                                    Microbot.log("The brother is here, stopping skeleton fight.");
                                     break;
                                 }
                             }
                         } catch (Exception e) {
-                            // No hint arrow, continue fighting skeleton
+                            // No hint arrow, no brother alive
+                        }
+                        
+                        if(currentRP >= targetRP){
+                            Microbot.log("Breaking out we have enough RP (" + currentRP + "/" + targetRP + ")");
+                            break;
                         }
 
                     }
@@ -1982,25 +2119,97 @@ public class BarrowsScript extends Script {
 
         int widgets[] = {1638413, 1638415, 1638417};
         int modelIDs[] = {6725, 6731, 6713, 6719};
-
+        
+        // Check if puzzle is open
+        boolean puzzleOpen = false;
         for (int widget : widgets) {
-            if(!super.isRunning()) break;
-
-            if(Rs2Widget.getWidget(widget)!=null){
-                for (int modelID : modelIDs) {
-                    if(!super.isRunning()) break;
-
-                    if(Rs2Widget.getWidget(widget).getModelId() == modelID){
-                        Microbot.log("Solution found");
-                        stopFutureWalker();
-                        Rs2Widget.clickWidget(widget);
-                    }
-                }
-            } else {
+            if(Rs2Widget.getWidget(widget) != null) {
+                puzzleOpen = true;
                 break;
             }
         }
+        
+        if(!puzzleOpen) {
+            return; // No puzzle to solve
+        }
+        
+        // Puzzle is open - solve it quickly
+        stopFutureWalker();
+        
+        // Try to solve multiple times in case we get interrupted
+        int attempts = 0;
+        long timeout = System.currentTimeMillis() + 5000; // 5 second timeout
+        
+        while(attempts < 10 && System.currentTimeMillis() < timeout) {
+            if(!super.isRunning()) break;
+            
+            boolean solved = false;
+            
+            for (int widget : widgets) {
+                if(!super.isRunning()) break;
 
+                Widget w = Rs2Widget.getWidget(widget);
+                if(w != null){
+                    for (int modelID : modelIDs) {
+                        if(!super.isRunning()) break;
+
+                        if(w.getModelId() == modelID){
+                            Microbot.log("Solution found, clicking immediately!");
+                            Rs2Widget.clickWidget(widget);
+                            solved = true;
+                            
+                            // Very short sleep to see if puzzle closes
+                            sleep(100, 200);
+                            
+                            // Check if puzzle is still open
+                            boolean stillOpen = false;
+                            for (int checkWidget : widgets) {
+                                if(Rs2Widget.getWidget(checkWidget) != null) {
+                                    stillOpen = true;
+                                    break;
+                                }
+                            }
+                            
+                            if(!stillOpen) {
+                                Microbot.log("Puzzle solved successfully!");
+                                return; // Puzzle solved
+                            } else {
+                                Microbot.log("Puzzle still open, retrying...");
+                            }
+                            break;
+                        }
+                    }
+                    if(solved) break;
+                }
+            }
+            
+            attempts++;
+            
+            // Check if puzzle disappeared (we might have been interrupted)
+            boolean puzzleStillOpen = false;
+            for (int widget : widgets) {
+                if(Rs2Widget.getWidget(widget) != null) {
+                    puzzleStillOpen = true;
+                    break;
+                }
+            }
+            
+            if(!puzzleStillOpen) {
+                Microbot.log("Puzzle closed, likely interrupted by combat");
+                
+                // Try to re-open the door quickly if we're near one
+                GameObject door = Rs2GameObject.getGameObject("Door");
+                if(door != null && Rs2GameObject.hasLineOfSight(door)) {
+                    Microbot.log("Re-opening puzzle door");
+                    Rs2GameObject.interact(door, "Open");
+                    sleep(200, 300);
+                }
+                return;
+            }
+            
+            // Very short sleep between attempts
+            sleep(50, 100);
+        }
     }
 
 
