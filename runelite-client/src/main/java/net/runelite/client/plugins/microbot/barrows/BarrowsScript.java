@@ -1758,31 +1758,52 @@ public class BarrowsScript extends Script {
         }
     }
     public void reJfount(){
-        int rejat = Rs2Random.between(10,30);
-        int runener = Rs2Random.between(50,65);
-        while(Rs2Player.getBoostedSkillLevel(Skill.PRAYER) < rejat || Rs2Player.getRunEnergy() <= runener){
-            if (!super.isRunning()) {
-                break;
+        // Check if any stat needs restoration (health, prayer, or run energy not at 100%)
+        int currentHealth = Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS);
+        int maxHealth = Rs2Player.getRealSkillLevel(Skill.HITPOINTS);
+        int currentPrayer = Rs2Player.getBoostedSkillLevel(Skill.PRAYER);
+        int maxPrayer = Rs2Player.getRealSkillLevel(Skill.PRAYER);
+        int currentRunEnergy = Rs2Player.getRunEnergy();
+        
+        // Use pool if health, prayer, or run energy is not at 100%
+        boolean needsRestoration = currentHealth < maxHealth || 
+                                  currentPrayer < maxPrayer || 
+                                  currentRunEnergy < 100;
+        
+        if (!needsRestoration) {
+            Microbot.log("Stats already at 100%, skipping pool");
+            return;
+        }
+        
+        Microbot.log("Using pool to restore stats (HP: " + currentHealth + "/" + maxHealth + 
+                    ", Prayer: " + currentPrayer + "/" + maxPrayer + 
+                    ", Run: " + currentRunEnergy + "%)");
+        
+        // Close bank if open
+        if(Rs2Bank.isOpen()){
+            if(Rs2Bank.closeBank()){
+                sleepUntil(()-> !Rs2Bank.isOpen(), Rs2Random.between(2000,4000));
             }
-            if(Rs2Bank.isOpen()){
-                if(Rs2Bank.closeBank()){
-                    sleepUntil(()-> !Rs2Bank.isOpen(), Rs2Random.between(2000,4000));
-                }
-            } else {
-                GameObject rej = Rs2GameObject.get("Pool of Refreshment", true);
-                if(rej == null){ break; }
-                Microbot.log("Drinking");
-                if(Rs2GameObject.interact(rej, "Drink")){
-                    sleepUntil(()-> Rs2Player.isMoving(), Rs2Random.between(1000,3000));
-                    sleepUntil(()-> !Rs2Player.isMoving(), Rs2Random.between(5000,10000));
-                    sleepUntil(()-> Rs2Player.isAnimating(), Rs2Random.between(1000,4000));
-                    sleepUntil(()-> !Rs2Player.isAnimating(), Rs2Random.between(1000,4000));
-                }
-            }
-            if(Rs2Player.getBoostedSkillLevel(Skill.PRAYER) >= rejat && Rs2Player.getRunEnergy() >= runener){
-                break;
-            }
-
+        }
+        
+        // Use the pool
+        GameObject rej = Rs2GameObject.get("Pool of Refreshment", true);
+        if(rej == null){ 
+            Microbot.log("Pool of Refreshment not found!");
+            return; 
+        }
+        
+        Microbot.log("Drinking from pool");
+        if(Rs2GameObject.interact(rej, "Drink")){
+            sleepUntil(()-> Rs2Player.isMoving(), Rs2Random.between(1000,3000));
+            sleepUntil(()-> !Rs2Player.isMoving(), Rs2Random.between(5000,10000));
+            sleepUntil(()-> Rs2Player.isAnimating(), Rs2Random.between(1000,4000));
+            sleepUntil(()-> !Rs2Player.isAnimating(), Rs2Random.between(1000,4000));
+            
+            // Log restored stats
+            Microbot.log("Stats restored (HP: " + Rs2Player.getBoostedSkillLevel(Skill.HITPOINTS) + "/" + maxHealth + 
+                        ", Prayer: " + Rs2Player.getBoostedSkillLevel(Skill.PRAYER) + "/" + maxPrayer + 
+                        ", Run: " + Rs2Player.getRunEnergy() + "%)");
         }
     }
     public void drinkPrayerPot(){
