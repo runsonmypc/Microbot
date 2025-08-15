@@ -163,6 +163,41 @@ public class BarrowsScript extends Script {
                 }
 
                 if(!inTunnels && shouldBank == false) {
+                    // Check if 5 brothers are killed - if so, identify the tunnel brother
+                    Microbot.log("WhoisTun: " + WhoisTun + ", varbitCheckEnabled: " + varbitCheckEnabled);
+                    if(WhoisTun.equals("Unknown") && varbitCheckEnabled) {
+                        int killCount = Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) + 
+                                       Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) + 
+                                       Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) + 
+                                       Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) + 
+                                       Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) + 
+                                       Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
+                        
+                        Microbot.log("Kill count: " + killCount);
+                        if(killCount == 5) {
+                            // Find which brother isn't killed - that's the tunnel brother
+                            if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) == 0) {
+                                WhoisTun = "Dharok the Wretched";
+                                Microbot.log("Detected Dharok is the tunnel brother (5 others killed)");
+                            } else if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) == 0) {
+                                WhoisTun = "Guthan the Infested";
+                                Microbot.log("Detected Guthan is the tunnel brother (5 others killed)");
+                            } else if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) == 0) {
+                                WhoisTun = "Karil the Tainted";
+                                Microbot.log("Detected Karil is the tunnel brother (5 others killed)");
+                            } else if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) == 0) {
+                                WhoisTun = "Torag the Corrupted";
+                                Microbot.log("Detected Torag is the tunnel brother (5 others killed)");
+                            } else if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) == 0) {
+                                WhoisTun = "Verac the Defiled";
+                                Microbot.log("Detected Verac is the tunnel brother (5 others killed)");
+                            } else if(Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM) == 0) {
+                                WhoisTun = "Ahrim the Blighted";
+                                Microbot.log("Detected Ahrim is the tunnel brother (5 others killed)");
+                            }
+                        }
+                    }
+                    
                     for (BarrowsBrothers brother : BarrowsBrothers.values()) {
                         Rs2WorldArea mound = brother.getHumpWP();
                         // Don't set NeededPrayer here - wait until we're in the mound
@@ -365,9 +400,17 @@ public class BarrowsScript extends Script {
                                 }
                             }
                             // at this point the brother should be dead and we should be free to leave.
-                            // We could be in ahrims mound while ahrim is tunnel. We need to stop the bot from leaving the mound and going back in.
-                            if(brother.name.equals(WhoisTun) && brother.name.contains("Ahrim")) {
-                                if (Rs2Dialogue.isInDialogue()) {
+                            // If this brother is the tunnel brother, check if we should enter tunnels
+                            if(brother.name.equals(WhoisTun)) {
+                                // Only enter tunnels if we've killed 5 brothers (don't enter on first tunnel encounter)
+                                int killCount = Microbot.getVarbitValue(Varbits.BARROWS_KILLED_DHAROK) + 
+                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_GUTHAN) + 
+                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_KARIL) + 
+                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_TORAG) + 
+                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_VERAC) + 
+                                               Microbot.getVarbitValue(Varbits.BARROWS_KILLED_AHRIM);
+                                
+                                if (killCount >= 5 && Rs2Dialogue.isInDialogue()) {
                                     dialogueEnterTunnels();
                                     return;
                                 }
@@ -497,33 +540,35 @@ public class BarrowsScript extends Script {
                                 io++;
                             }
                             //we looted the chest time to reset
-
+                            
+                            // After looting, check if we need to bank for the NEXT run
                             suppliesCheck(config);
-
-                            if(shouldBank){
-                                Microbot.log("We should bank.");
-                                ChestsOpened++;
-                                WhoisTun = "Unknown";
-                                inTunnels = false;
+                            
+                            // Reset for next run
+                            ChestsOpened++;
+                            WhoisTun = "Unknown";
+                            inTunnels = false;
+                            
+                            // Now leave - if we need to bank, we'll handle it outside tunnels
+                            if(shouldBank) {
+                                // Need to bank - teleport to Ferox
+                                if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                    Microbot.log("Looted chest, teleporting to bank.");
+                                    sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
+                                    sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
+                                }
                             } else {
+                                // Don't need to bank - use configured teleport method
                                 if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.BARROWS_TELEPORT){
                                     Rs2Inventory.interact("Barrows teleport", "Break");
                                     sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
-                                    ChestsOpened++;
-                                    WhoisTun = "Unknown";
-                                    inTunnels = false;
                                 } else if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.TELEPORT_TO_HOUSE) {
                                     Rs2Inventory.interact("Teleport to house", "Inside");
                                     sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
-                                    ChestsOpened++;
-                                    WhoisTun = "Unknown";
-                                    inTunnels = false;
                                     handlePOH(config);
                                 } else if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
                                     // Use staircase to leave tunnels
-                                    ChestsOpened++;
-                                    WhoisTun = "Unknown";
-                                    // Leave via staircase, inTunnels will be set to false by leaveTheMound()
+                                    leaveTheMound();
                                 }
                             }
 
@@ -746,7 +791,8 @@ public class BarrowsScript extends Script {
                 System.out.println("Total time for loop " + totalTime);
 
             } catch (Exception ex) {
-                System.out.println(ex.getMessage());
+                Microbot.log("Error in Barrows script: " + ex.getMessage());
+                ex.printStackTrace();
             }
         }, 0, scriptDelay, TimeUnit.MILLISECONDS);
         return true;
@@ -1121,8 +1167,6 @@ public class BarrowsScript extends Script {
     }
 
     public void gettheRune(BarrowsConfig config){
-        if(!neededRune.equals("unknown")) return;
-
         neededRune = config.selectedSpell().getRuneType();
         
         // If it's a powered staff, we don't need catalytic runes
@@ -1177,7 +1221,7 @@ public class BarrowsScript extends Script {
         }
     }
     public void antiPatternEnableWrongPrayer(){
-        if(!Rs2Prayer.isPrayerActive(NeededPrayer)){
+        if(NeededPrayer != null && !Rs2Prayer.isPrayerActive(NeededPrayer)){
             if(Rs2Random.between(0,100) <= Rs2Random.between(1,4)) {
                 Rs2PrayerEnum wrongPrayer = null;
                 int random = Rs2Random.between(0,100);
@@ -1197,7 +1241,7 @@ public class BarrowsScript extends Script {
         }
     }
     public void antiPatternActivatePrayer(){
-        if(!Rs2Prayer.isPrayerActive(NeededPrayer)){
+        if(NeededPrayer != null && !Rs2Prayer.isPrayerActive(NeededPrayer)){
             if(Rs2Random.between(0,100) <= Rs2Random.between(1,8)) {
                 drinkPrayerPot();
                 Rs2Prayer.toggle(NeededPrayer);
@@ -1319,34 +1363,34 @@ public class BarrowsScript extends Script {
                     neededprayer = Rs2PrayerEnum.PROTECT_RANGE;
                 }
                 
-                if (!shouldPray) {
-                    return;
-                }
-                
-                // Swap gear when praying in tunnels
-                swapGearForPrayer(config);
-                
-                //activate prayer
-                if(!Rs2Prayer.isPrayerActive(neededprayer)){
-                    Microbot.log("Turning on Prayer.");
-                    while(!Rs2Prayer.isPrayerActive(neededprayer)){
-                        if (!super.isRunning()) {
-                            break;
-                        }
-                        // Only drink prayer pots if in combat
-                        if (Rs2Player.isInCombat()) {
-                            drinkPrayerPot();
-                        }
-                        Rs2Prayer.toggle(neededprayer);
-                        sleep(0,750);
-                        if (Rs2Prayer.isPrayerActive(neededprayer)) {
-                            //we made it in
-                            Microbot.log("Praying");
-                            break;
+                // Only swap gear and activate prayer if we should pray
+                if (shouldPray) {
+                    // Swap gear when praying in tunnels
+                    swapGearForPrayer(config);
+                    
+                    //activate prayer
+                    if(!Rs2Prayer.isPrayerActive(neededprayer)){
+                        Microbot.log("Turning on Prayer.");
+                        while(!Rs2Prayer.isPrayerActive(neededprayer)){
+                            if (!super.isRunning()) {
+                                break;
+                            }
+                            // Only drink prayer pots if in combat
+                            if (Rs2Player.isInCombat()) {
+                                drinkPrayerPot();
+                            }
+                            Rs2Prayer.toggle(neededprayer);
+                            sleep(0,750);
+                            if (Rs2Prayer.isPrayerActive(neededprayer)) {
+                                //we made it in
+                                Microbot.log("Praying");
+                                break;
+                            }
                         }
                     }
                 }
-                //fight brother
+                
+                //fight brother - always fight regardless of prayer settings
                 if(currentBrother != null && !Rs2Player.isInCombat()){
                     while(!Rs2Player.isInCombat()){
                         if (!super.isRunning()) {
