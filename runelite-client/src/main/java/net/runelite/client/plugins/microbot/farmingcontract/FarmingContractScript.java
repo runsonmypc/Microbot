@@ -21,7 +21,6 @@ import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
-import net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.timetracking.farming.Produce;
@@ -55,7 +54,7 @@ public class FarmingContractScript extends Script {
     private AtomicReference<ContractState> currentState;
     
     // Constants
-    private static final WorldPoint JANE_LOCATION = new WorldPoint(1238, 3726, 0);
+    private static final WorldPoint JANE_LOCATION = new WorldPoint(1248, 3727, 0);
     private static final int MAX_RETRIES = 3;
     
     public FarmingContractScript(FarmingContractPlugin plugin, FarmingContractConfig config) {
@@ -66,41 +65,14 @@ public class FarmingContractScript extends Script {
     
     @Override
     public boolean run() {
-        try {
-            initialize();
-            mainLoop();
-        } catch (Exception e) {
-            log.error("Script error: ", e);
-            plugin.setStatus("Error: " + e.getMessage());
-            return false;
-        }
-        return true;
-    }
-    
-    /**
-     * Initialize all managers and handlers.
-     */
-    private void initialize() {
-        log.info("Initializing Farming Contract Script");
+        // Initialize managers and handlers
+        initialize();
         
-        // Create managers
-        contractManager = new ContractManager();
-        bankingManager = new BankingManager(config);
-        stateDetector = new PatchStateDetector(null); // FarmingWorld not accessible from outside package
-        stateManager = new StateTransitionManager();
-        context = new ContractContext();
-        
-        // Initialize patch handlers (will be created on demand)
-        patchHandlers = new HashMap<>();
-        
-        log.info("Initialization complete with {} patch handlers", patchHandlers.size());
-    }
-    
-    /**
-     * Main script loop.
-     */
-    private void mainLoop() {
-        while (plugin.isStarted() && !Thread.currentThread().isInterrupted()) {
+        // Schedule the main loop to run asynchronously
+        mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
+            if (!Microbot.isLoggedIn()) return;
+            if (!super.run()) return;
+            
             try {
                 ContractState state = currentState.get();
                 log.debug("Current state: {}", state);
@@ -157,16 +129,34 @@ public class FarmingContractScript extends Script {
                         
                     default:
                         log.warn("Unknown state: {}", state);
-                        sleep(1000);
                 }
-                
-                sleep(600, 800); // Small delay between iterations
                 
             } catch (Exception e) {
                 log.error("Error in main loop: ", e);
                 currentState.set(ContractState.ERROR);
             }
-        }
+        }, 0, 600, TimeUnit.MILLISECONDS);
+        
+        return true;
+    }
+    
+    /**
+     * Initialize all managers and handlers.
+     */
+    private void initialize() {
+        log.info("Initializing Farming Contract Script");
+        
+        // Create managers
+        contractManager = new ContractManager();
+        bankingManager = new BankingManager(config);
+        stateDetector = new PatchStateDetector(null); // FarmingWorld not accessible from outside package
+        stateManager = new StateTransitionManager();
+        context = new ContractContext();
+        
+        // Initialize patch handlers (will be created on demand)
+        patchHandlers = new HashMap<>();
+        
+        log.info("Initialization complete with {} patch handlers", patchHandlers.size());
     }
     
     /**
@@ -215,47 +205,67 @@ public class FarmingContractScript extends Script {
         }
         
         // Find and talk to Jane
-        NPC jane = Rs2Npc.getNpcs()
-            .filter(npc -> npc.getName() != null && npc.getName().equals("Guildmaster Jane"))
-            .findFirst()
-            .orElse(null);
+        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
             
         if (jane == null) {
             log.error("Could not find Guildmaster Jane");
-            transitionTo(ContractState.ERROR);
+            // Jane not visible, might need to walk closer
+            if (Rs2Player.getWorldLocation().distanceTo(JANE_LOCATION) > 5) {
+                Rs2Walker.walkTo(JANE_LOCATION);
+            }
             return;
         }
         
         log.info("Talking to Jane");
-        Rs2Npc.interact(new Rs2NpcModel(jane), "Contract");
-        sleepUntil(() -> Rs2Dialogue.isInDialogue(), 5000);
+        // Try Contract first, then Talk-to if it fails
+        if (!Rs2Npc.interact(jane, "Contract")) {
+            Rs2Npc.interact(jane, "Talk-to");
+        }
         
-        // Parse contract from dialogue
-        if (Rs2Dialogue.isInDialogue()) {
-            sleep(1200, 1500); // Wait for dialogue to fully load
-            
-            Produce contract = contractManager.parseContract();
-            if (contract != null) {
-                log.info("Received contract: {}", contract.getName());
-                
-                // Request appropriate tier
+        // Wait for dialogue to open
+        sleepUntil(() -> Rs2Dialogue.isInDialogue(), 3000);
+        
+        // Handle dialogue quickly
+        while (Rs2Dialogue.isInDialogue()) {
+            // Check for options first
+            if (Rs2Dialogue.hasSelectAnOption()) {
+                // Select tier if needed
                 String tier = contractManager.getContractTier();
-                contractManager.requestContract(tier);
-                
-                sleep(1000, 1200);
-                Rs2Dialogue.clickContinue();
-                
-                transitionTo(ContractState.GET_SEEDS);
-            } else {
-                // Check if we need to complete dialogue
-                if (contractManager.isContractJustCompleted()) {
-                    log.info("Contract just completed, getting new one");
-                    Rs2Dialogue.clickContinue();
-                    sleep(600, 800);
-                    contractManager.clearContract();
-                    // Will retry on next loop
+                if (Rs2Dialogue.hasDialogueOption(tier)) {
+                    log.info("Selecting contract tier: {}", tier);
+                    Rs2Dialogue.clickOption(tier);
+                    sleep(100);
+                    continue;
                 }
             }
+            
+            // Parse contract from dialogue
+            String text = Rs2Dialogue.getDialogueText();
+            if (text != null && !text.isEmpty()) {
+                // Check if Jane is telling us we already have a contract
+                if (text.contains("already asked") || text.contains("already given you") || 
+                    text.contains("still working on")) {
+                    log.info("Jane says we already have a contract");
+                    break; // Just exit, we should have the contract saved
+                }
+                
+                // Try to parse the contract
+                Produce contract = contractManager.parseContract();
+                if (contract != null) {
+                    log.info("Got contract: {}", contract.getName());
+                    contractManager.setCurrentContract(contract);
+                    break; // Exit immediately - dialogue will close when we walk away
+                }
+            }
+            
+            // Continue dialogue
+            Rs2Dialogue.clickContinue();
+            sleep(100); // Fast 100ms delay
+        }
+        
+        if (contractManager.getCurrentContract() != null) {
+            // Check patch state first before getting seeds
+            transitionTo(ContractState.CHECK_CONTRACT);
         }
     }
     
@@ -358,12 +368,17 @@ public class FarmingContractScript extends Script {
     private void handlePlantSeeds() {
         Produce contract = contractManager.getCurrentContract();
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
-        PatchHandler handler = patchHandlers.get(location);
         
+        // Create handler if it doesn't exist
+        PatchHandler handler = patchHandlers.get(location);
         if (handler == null) {
-            log.error("No handler for patch location");
-            transitionTo(ContractState.ERROR);
-            return;
+            handler = createHandlerForLocation(location);
+            if (handler == null) {
+                log.error("Could not create handler for patch location");
+                transitionTo(ContractState.ERROR);
+                return;
+            }
+            patchHandlers.put(location, handler);
         }
         
         if (handler.plant(contract)) {
@@ -402,12 +417,17 @@ public class FarmingContractScript extends Script {
     private void handleCheckHealth() {
         Produce contract = contractManager.getCurrentContract();
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
-        PatchHandler handler = patchHandlers.get(location);
         
+        // Create handler if it doesn't exist
+        PatchHandler handler = patchHandlers.get(location);
         if (handler == null) {
-            log.error("No handler for patch location");
-            transitionTo(ContractState.ERROR);
-            return;
+            handler = createHandlerForLocation(location);
+            if (handler == null) {
+                log.error("Could not create handler for patch location");
+                transitionTo(ContractState.ERROR);
+                return;
+            }
+            patchHandlers.put(location, handler);
         }
         
         if (handler.checkHealth()) {
@@ -426,12 +446,17 @@ public class FarmingContractScript extends Script {
     private void handleHarvest() {
         Produce contract = contractManager.getCurrentContract();
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
-        PatchHandler handler = patchHandlers.get(location);
         
+        // Create handler if it doesn't exist
+        PatchHandler handler = patchHandlers.get(location);
         if (handler == null) {
-            log.error("No handler for patch location");
-            transitionTo(ContractState.ERROR);
-            return;
+            handler = createHandlerForLocation(location);
+            if (handler == null) {
+                log.error("Could not create handler for patch location");
+                transitionTo(ContractState.ERROR);
+                return;
+            }
+            patchHandlers.put(location, handler);
         }
         
         if (handler.harvest()) {
@@ -449,12 +474,17 @@ public class FarmingContractScript extends Script {
     private void handleClearPatch() {
         Produce contract = contractManager.getCurrentContract();
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
-        PatchHandler handler = patchHandlers.get(location);
         
+        // Create handler if it doesn't exist
+        PatchHandler handler = patchHandlers.get(location);
         if (handler == null) {
-            log.error("No handler for patch location");
-            transitionTo(ContractState.ERROR);
-            return;
+            handler = createHandlerForLocation(location);
+            if (handler == null) {
+                log.error("Could not create handler for patch location");
+                transitionTo(ContractState.ERROR);
+                return;
+            }
+            patchHandlers.put(location, handler);
         }
         
         // Pay for clearing if needed (trees)
@@ -489,13 +519,10 @@ public class FarmingContractScript extends Script {
         }
         
         // Talk to Jane
-        NPC jane = Rs2Npc.getNpcs()
-            .filter(npc -> npc.getName() != null && npc.getName().equals("Guildmaster Jane"))
-            .findFirst()
-            .orElse(null);
+        NPC jane = Rs2Npc.getNpc("Guildmaster Jane");
             
         if (jane != null) {
-            Rs2Npc.interact(new Rs2NpcModel(jane), "Contract");
+            Rs2Npc.interact(jane, "Contract");
             sleepUntil(() -> Rs2Dialogue.isInDialogue(), 5000);
             
             // Handle dialogue

@@ -208,11 +208,21 @@ public class BankingManager {
     
     private boolean openBankSafely() {
         if (!Rs2Bank.isOpen()) {
-            if (!Rs2Bank.openBank()) {
-                log.error("Failed to open bank");
+            // Walk to bank if we're not near one
+            if (!Rs2Bank.isNearBank(10)) {
+                log.info("Walking to nearest bank");
+                Rs2Bank.walkToBank();
+                sleepUntil(() -> Rs2Bank.isNearBank(10), 15000);
+            }
+            
+            // Try to open the bank
+            Rs2Bank.openBank();
+            
+            // Wait for bank to open
+            if (!sleepUntil(Rs2Bank::isOpen, 5000)) {
+                log.error("Failed to open bank - timed out");
                 return false;
             }
-            sleepUntil(Rs2Bank::isOpen, 5000);
         }
         return Rs2Bank.isOpen();
     }
@@ -304,13 +314,16 @@ public class BankingManager {
     private boolean withdrawSeeds(int seedId, int amount) {
         if (Rs2Inventory.contains(seedId)) {
             int currentCount = Rs2Inventory.count(seedId);
+            log.info("Already have {} seeds in inventory (need {})", currentCount, amount);
             if (currentCount >= amount) {
                 return true;
             }
             // Need more
             amount = amount - currentCount;
+            log.info("Need {} more seeds", amount);
         }
         
+        log.info("Checking bank for seed ID {} (need {} seeds)", seedId, amount);
         if (Rs2Bank.hasBankItem(seedId, amount)) {
             Rs2Bank.withdrawX(seedId, amount);
             log.info("Withdrew {} seeds (ID: {})", amount, seedId);

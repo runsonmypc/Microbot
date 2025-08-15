@@ -105,23 +105,21 @@ public class ContractManager {
     public void requestContract(String tier) {
         log.info("Requesting {} contract from Jane", tier);
         
-        // Navigate dialogue based on tier
-        switch (tier.toLowerCase()) {
-            case "easy":
-                Rs2Dialogue.clickContinue();
-                Rs2Dialogue.clickOption("Easy");
-                break;
-            case "medium":
-                Rs2Dialogue.clickContinue();
-                Rs2Dialogue.clickOption("Medium");
-                break;
-            case "hard":
-                Rs2Dialogue.clickContinue();
-                Rs2Dialogue.clickOption("Hard");
-                break;
-            default:
-                log.warn("Unknown contract tier: {}", tier);
-                Rs2Dialogue.clickOption("Easy"); // Default to easy
+        // Only click option if options are available
+        if (Rs2Dialogue.hasSelectAnOption()) {
+            if (Rs2Dialogue.hasDialogueOption(tier)) {
+                Rs2Dialogue.clickOption(tier);
+            } else {
+                // Try with lowercase if exact match fails
+                String lowerTier = tier.toLowerCase();
+                if (Rs2Dialogue.hasDialogueOption(lowerTier)) {
+                    Rs2Dialogue.clickOption(lowerTier);
+                } else {
+                    log.warn("Contract tier option '{}' not found in dialogue", tier);
+                }
+            }
+        } else {
+            log.debug("No dialogue options available yet for tier selection");
         }
     }
     

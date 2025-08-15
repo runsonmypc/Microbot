@@ -173,23 +173,26 @@ public class FarmingContractData {
         
         switch (produce.getPatchImplementation()) {
             case HERB:
-                return PatchLocation.of("Falador", PatchImplementation.HERB, 
-                    new WorldPoint(3058, 3311, 0), defaultPoly);
+                return PatchLocation.of("Farming Guild", PatchImplementation.HERB, 
+                    new WorldPoint(1239, 3728, 0), defaultPoly);
             case ALLOTMENT:
-                return PatchLocation.of("Falador", PatchImplementation.ALLOTMENT,
-                    new WorldPoint(3054, 3307, 0), defaultPoly);
+                return PatchLocation.of("Farming Guild", PatchImplementation.ALLOTMENT,
+                    new WorldPoint(1265, 3729, 0), defaultPoly);
             case FLOWER:
-                return PatchLocation.of("Falador", PatchImplementation.FLOWER,
-                    new WorldPoint(3054, 3307, 0), defaultPoly);
+                return PatchLocation.of("Farming Guild", PatchImplementation.FLOWER,
+                    new WorldPoint(1260, 3725, 0), defaultPoly);
             case BUSH:
                 return PatchLocation.of("Farming Guild", PatchImplementation.BUSH,
-                    new WorldPoint(1249, 3718, 0), defaultPoly);
+                    new WorldPoint(1260, 3733, 0), defaultPoly);
             case CACTUS:
-                return PatchLocation.of("Al Kharid", PatchImplementation.CACTUS,
-                    new WorldPoint(3315, 3202, 0), defaultPoly);
+                return PatchLocation.of("Farming Guild", PatchImplementation.CACTUS,
+                    new WorldPoint(1264, 3747, 0), defaultPoly);
             case TREE:
                 return PatchLocation.of("Farming Guild", PatchImplementation.TREE,
-                    new WorldPoint(1231, 3736, 0), defaultPoly);
+                    new WorldPoint(1232, 3736, 0), defaultPoly);
+            case FRUIT_TREE:
+                return PatchLocation.of("Farming Guild", PatchImplementation.FRUIT_TREE,
+                    new WorldPoint(1242, 3757, 0), defaultPoly);
             default:
                 return null;
         }
