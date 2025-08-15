@@ -137,7 +137,8 @@ public interface BarrowsConfig extends Config {
 
     enum selectedToBarrowsTPMethod {
         Tablet(ItemID.TELETAB_BARROWS, "Barrows teleport"),
-        POH(ItemID.POH_TABLET_TELEPORTTOHOUSE, "Teleport to house");
+        POH(ItemID.POH_TABLET_TELEPORTTOHOUSE, "Teleport to house"),
+        Walker(-1, "Rs2Walker (No teleport)");
 
         private final int id;
         private final String name;

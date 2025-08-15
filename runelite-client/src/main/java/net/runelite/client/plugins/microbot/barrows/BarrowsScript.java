@@ -145,6 +145,16 @@ public class BarrowsScript extends Script {
                         return;
                     }
                 }
+                
+                // Handle Walker method - walk from bank to Barrows
+                if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                    if (!inTunnels && !shouldBank && Rs2Player.getWorldLocation().distanceTo(new WorldPoint(3573, 3296, 0)) > 60) {
+                        // Use Rs2Walker to path to Barrows area
+                        WorldPoint barrowsCenter = new WorldPoint(3565, 3288, 0);
+                        Rs2Walker.walkTo(barrowsCenter);
+                        sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(barrowsCenter) < 30, Rs2Random.between(30000, 60000));
+                    }
+                }
 
                 if(!inTunnels && shouldBank == false) {
                     for (BarrowsBrothers brother : BarrowsBrothers.values()) {
@@ -227,7 +237,9 @@ public class BarrowsScript extends Script {
                         if (Rs2Player.getWorldLocation().getPlane() != 3) {
                             Microbot.log("Entering the mound");
 
-                            handlePOH(config);
+                            if (!config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                handlePOH(config);
+                            }
 
                             goToTheMound(mound);
 
@@ -360,7 +372,9 @@ public class BarrowsScript extends Script {
                             // Found the tunnel brother's mound
                             Rs2WorldArea tunnelMound = brother.getHumpWP();
 
-                            handlePOH(config);
+                            if (!config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                handlePOH(config);
+                            }
 
                             // Walk to the mound
                             goToTheMound(tunnelMound);
@@ -477,13 +491,18 @@ public class BarrowsScript extends Script {
                                     ChestsOpened++;
                                     WhoisTun = "Unknown";
                                     inTunnels = false;
-                                } else {
+                                } else if(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID() == ItemID.TELEPORT_TO_HOUSE) {
                                     Rs2Inventory.interact("Teleport to house", "Inside");
                                     sleepUntil(() -> Rs2Player.getWorldLocation().getY() < 9600 || Rs2Player.getWorldLocation().getY() > 9730, Rs2Random.between(6000, 10000));
                                     ChestsOpened++;
                                     WhoisTun = "Unknown";
                                     inTunnels = false;
                                     handlePOH(config);
+                                } else if(config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                    // Use staircase to leave tunnels
+                                    ChestsOpened++;
+                                    WhoisTun = "Unknown";
+                                    // Leave via staircase, inTunnels will be set to false by leaveTheMound()
                                 }
                             }
 
@@ -598,19 +617,22 @@ public class BarrowsScript extends Script {
                         }
                         howtoBank = Rs2Random.between(0,100);
                         if(howtoBank<= 40){
-                            if(Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID())==null || Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()).getQuantity() < Rs2Random.between(config.minBarrowsTeleports(),config.targetBarrowsTeleports())){
-                                if(Rs2Bank.getBankItem(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID())!=null){
-                                    if(Rs2Bank.getBankItem(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()).getQuantity()>=config.targetBarrowsTeleports()){
-                                        if(Rs2Bank.withdrawX(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID(), Rs2Random.between(config.minBarrowsTeleports(),config.targetBarrowsTeleports()))){
-                                            sleep(Rs2Random.between(300,750));
+                            // Skip teleport item withdrawal for Walker method
+                            if(!config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                if(Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID())==null || Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()).getQuantity() < Rs2Random.between(config.minBarrowsTeleports(),config.targetBarrowsTeleports())){
+                                    if(Rs2Bank.getBankItem(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID())!=null){
+                                        if(Rs2Bank.getBankItem(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()).getQuantity()>=config.targetBarrowsTeleports()){
+                                            if(Rs2Bank.withdrawX(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID(), Rs2Random.between(config.minBarrowsTeleports(),config.targetBarrowsTeleports()))){
+                                                sleep(Rs2Random.between(300,750));
+                                            }
+                                        } else {
+                                            Microbot.log("We're out of "+config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()+" need at least "+config.targetBarrowsTeleports()+" stopping...");
+                                            super.shutdown();
                                         }
                                     } else {
                                         Microbot.log("We're out of "+config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()+" need at least "+config.targetBarrowsTeleports()+" stopping...");
                                         super.shutdown();
                                     }
-                                } else {
-                                    Microbot.log("We're out of "+config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()+" need at least "+config.targetBarrowsTeleports()+" stopping...");
-                                    super.shutdown();
                                 }
                             }
                         }
@@ -681,7 +703,9 @@ public class BarrowsScript extends Script {
                             closeBank();
                             if(!Rs2Bank.isOpen()){
                                 reJfount();
-                                handlePOH(config);
+                                if (!config.selectedToBarrowsTPMethod().name().equals("Walker")) {
+                                    handlePOH(config);
+                                }
                             }
                         } else {
                             if(Rs2Player.getRunEnergy() <= 5){
@@ -975,10 +999,13 @@ public class BarrowsScript extends Script {
         }
     }
     public void suppliesCheck(BarrowsConfig config){
+        boolean needsTeleportItem = !config.selectedToBarrowsTPMethod().name().equals("Walker");
+        
         if(!usingPoweredStaffs) {
             if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null || !Rs2Inventory.contains("Spade") ||
-                    Rs2Inventory.count(config.food().getName()) < 2 || (Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null)
-                    || Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
+                    Rs2Inventory.count(config.food().getName()) < 2 || 
+                    (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
+                    Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
                     Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1 ||
                     Rs2Inventory.get(neededRune) == null || Rs2Inventory.get(neededRune).getQuantity() <= minRuneAmt || Rs2Player.getRunEnergy() <= 5) {
                 Microbot.log("We need to bank.");
@@ -991,7 +1018,7 @@ public class BarrowsScript extends Script {
                 if (Rs2Inventory.count(config.food().getName()) < 2) {
                     Microbot.log("We have less than 2 food.");
                 }
-                if ((Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null)) {
+                if (needsTeleportItem && (Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null)) {
                     Microbot.log("We don't have a "+config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemName());
                 }
                 if (Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews) {
@@ -1013,8 +1040,9 @@ public class BarrowsScript extends Script {
         }
         if(usingPoweredStaffs){
             if(Rs2Equipment.get(EquipmentInventorySlot.RING)==null || !Rs2Inventory.contains("Spade") ||
-                    Rs2Inventory.count(config.food().getName())<2 || (Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null)
-                    || Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
+                    Rs2Inventory.count(config.food().getName())<2 || 
+                    (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
+                    Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
                     Rs2Inventory.count(config.prayerRestoreType().getPrayerRestoreTypeID()) < 1 || outOfPoweredStaffCharges
                     || Rs2Player.getRunEnergy() <= 5){
                 Microbot.log("We need to bank.");
@@ -1027,7 +1055,7 @@ public class BarrowsScript extends Script {
                 if(Rs2Inventory.count(config.food().getName())<2){
                     Microbot.log("We have less than 2 food.");
                 }
-                if((Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) ==null)){
+                if(needsTeleportItem && (Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) ==null)){
                     Microbot.log("We don't have a "+config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemName());
                 }
                 if(Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews){
