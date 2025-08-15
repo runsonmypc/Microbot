@@ -112,6 +112,32 @@ public class BankingManager {
     }
     
     /**
+     * Prepare for check-health on bushes/trees.
+     * Only needs spade, no seeds.
+     */
+    public BankingResult prepareForCheckHealth(Produce contract) {
+        log.info("Preparing for check-health on {}", contract.getName());
+        
+        if (!openBankSafely()) {
+            return BankingResult.failure("Could not open bank");
+        }
+        
+        // Deposit everything except tools
+        depositUnnecessaryItems(contract);
+        
+        // Always need spade for clearing after check-health
+        boolean hasSpade = withdrawSpade();
+        
+        // Withdraw coins for trees if needed for clearing
+        if (needsCoinsForContract(contract)) {
+            withdrawCoins();
+        }
+        
+        Rs2Bank.closeBank();
+        return BankingResult.success(hasSpade, false);
+    }
+    
+    /**
      * Prepare for harvesting or checking a contract.
      */
     public BankingResult prepareForHarvesting(Produce contract, boolean needsClearing) {

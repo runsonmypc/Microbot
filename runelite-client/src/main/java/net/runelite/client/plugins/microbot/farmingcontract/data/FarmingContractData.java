@@ -162,37 +162,81 @@ public class FarmingContractData {
             return null;
         }
         
-        // For now, return a simple mapping based on patch type
-        // In a real implementation, this would map to specific patch locations
-        // Create a simple 3x3 polygon around the patch location for now
-        java.awt.Polygon defaultPoly = new java.awt.Polygon(
-            new int[]{-1, 1, 1, -1},
-            new int[]{-1, -1, 1, 1},
-            4
-        );
+        // Get the specific polygon for each patch type based on original script
+        java.awt.Polygon polygon;
+        WorldPoint location;
         
         switch (produce.getPatchImplementation()) {
             case HERB:
-                return PatchLocation.of("Farming Guild", PatchImplementation.HERB, 
-                    new WorldPoint(1239, 3728, 0), defaultPoly);
+                // Herb patch at (1238-1239, 3726-3727)
+                polygon = new java.awt.Polygon(
+                    new int[]{1238, 1238, 1239, 1239},
+                    new int[]{3726, 3727, 3727, 3726},
+                    4
+                );
+                location = new WorldPoint(1239, 3728, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.HERB, location, polygon);
+                
             case ALLOTMENT:
-                return PatchLocation.of("Farming Guild", PatchImplementation.ALLOTMENT,
-                    new WorldPoint(1265, 3729, 0), defaultPoly);
+                // South allotment - simplified area
+                polygon = new java.awt.Polygon(
+                    new int[]{1265, 1265, 1268, 1268},
+                    new int[]{3724, 3730, 3730, 3724},
+                    4
+                );
+                location = new WorldPoint(1265, 3729, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.ALLOTMENT, location, polygon);
+                
             case FLOWER:
-                return PatchLocation.of("Farming Guild", PatchImplementation.FLOWER,
-                    new WorldPoint(1260, 3725, 0), defaultPoly);
+                // Flower patch at (1260-1261, 3725-3726)
+                polygon = new java.awt.Polygon(
+                    new int[]{1260, 1260, 1261, 1261},
+                    new int[]{3725, 3726, 3726, 3725},
+                    4
+                );
+                location = new WorldPoint(1260, 3727, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.FLOWER, location, polygon);
+                
             case BUSH:
-                return PatchLocation.of("Farming Guild", PatchImplementation.BUSH,
-                    new WorldPoint(1260, 3733, 0), defaultPoly);
+                // Bush patch at (1260-1261, 3733-3734)
+                polygon = new java.awt.Polygon(
+                    new int[]{1260, 1260, 1261, 1261},
+                    new int[]{3733, 3734, 3734, 3733},
+                    4
+                );
+                location = new WorldPoint(1260, 3732, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.BUSH, location, polygon);
+                
             case CACTUS:
-                return PatchLocation.of("Farming Guild", PatchImplementation.CACTUS,
-                    new WorldPoint(1264, 3747, 0), defaultPoly);
+                // Cactus patch between (1264, 3747) and (1265, 3748)
+                polygon = new java.awt.Polygon(
+                    new int[]{1264, 1264, 1265, 1265},
+                    new int[]{3747, 3748, 3748, 3747},
+                    4
+                );
+                location = new WorldPoint(1264, 3747, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.CACTUS, location, polygon);
+                
             case TREE:
-                return PatchLocation.of("Farming Guild", PatchImplementation.TREE,
-                    new WorldPoint(1232, 3736, 0), defaultPoly);
+                // Tree patch at (1231-1233, 3735-3737)
+                polygon = new java.awt.Polygon(
+                    new int[]{1231, 1231, 1233, 1233},
+                    new int[]{3735, 3737, 3737, 3735},
+                    4
+                );
+                location = new WorldPoint(1233, 3734, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.TREE, location, polygon);
+                
             case FRUIT_TREE:
-                return PatchLocation.of("Farming Guild", PatchImplementation.FRUIT_TREE,
-                    new WorldPoint(1242, 3757, 0), defaultPoly);
+                // Fruit tree patch at guild
+                polygon = new java.awt.Polygon(
+                    new int[]{1241, 1241, 1244, 1244},
+                    new int[]{3756, 3759, 3759, 3756},
+                    4
+                );
+                location = new WorldPoint(1243, 3757, 0);
+                return PatchLocation.of("Farming Guild", PatchImplementation.FRUIT_TREE, location, polygon);
+                
             default:
                 return null;
         }

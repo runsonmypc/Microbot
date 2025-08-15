@@ -1074,6 +1074,10 @@ public class BarrowsScript extends Script {
         neededRune = "unknown";
         int magicLvl = Rs2Player.getRealSkillLevel(Skill.MAGIC);
 
+        if(magicLvl >= 17 && magicLvl < 41){
+            neededRune = "Chaos rune";
+        }
+
         if(magicLvl >= 41 && magicLvl < 62){
             neededRune = "Death rune";
         }

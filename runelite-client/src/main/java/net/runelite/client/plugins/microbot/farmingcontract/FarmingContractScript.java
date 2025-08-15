@@ -23,6 +23,7 @@ import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.npc.Rs2Npc;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+import net.runelite.client.plugins.timetracking.farming.PatchImplementation;
 import net.runelite.client.plugins.timetracking.farming.Produce;
 
 import java.util.HashMap;
@@ -52,6 +53,7 @@ public class FarmingContractScript extends Script {
     
     // State management
     private AtomicReference<ContractState> currentState;
+    private boolean clearingCompletedContract = false;
     
     // Constants
     private static final WorldPoint JANE_LOCATION = new WorldPoint(1248, 3727, 0);
@@ -172,15 +174,18 @@ public class FarmingContractScript extends Script {
             PatchLocation location = FarmingContractData.getPatchLocation(contract);
             if (location != null) {
                 PatchStateDetector.PatchState patchState = stateDetector.detectPatchState(contract, location);
+                log.info("Patch state: {}", patchState.description);
                 
-                if (patchState.needsPlanting) {
-                    transitionTo(ContractState.GET_SEEDS);
-                } else if (patchState.needsChecking) {
+                // Choose action based on actual patch state
+                if (patchState.needsChecking) {
+                    log.info("Patch needs check-health for contract");
                     transitionTo(ContractState.CHECK_HEALTH);
                 } else if (patchState.needsHarvesting) {
                     transitionTo(ContractState.HARVEST);
                 } else if (patchState.needsClearing) {
                     transitionTo(ContractState.CLEAR_PATCH);
+                } else if (patchState.needsPlanting) {
+                    transitionTo(ContractState.GET_SEEDS);
                 } else if (patchState.isGrowing) {
                     transitionTo(ContractState.WAIT_FOR_GROWTH);
                 } else {
@@ -265,6 +270,7 @@ public class FarmingContractScript extends Script {
         
         if (contractManager.getCurrentContract() != null) {
             // Check patch state first before getting seeds
+            log.info("Got contract, checking patch state first");
             transitionTo(ContractState.CHECK_CONTRACT);
         }
     }
@@ -277,6 +283,25 @@ public class FarmingContractScript extends Script {
         if (contract == null) {
             transitionTo(ContractState.CHECK_CONTRACT);
             return;
+        }
+        
+        // First check the actual patch state - we might not need seeds!
+        PatchLocation location = FarmingContractData.getPatchLocation(contract);
+        if (location != null) {
+            PatchStateDetector.PatchState patchState = stateDetector.detectPatchState(contract, location);
+            
+            // If patch needs check-health, we don't need seeds, just tools
+            if (patchState.needsChecking) {
+                log.info("Patch needs check-health, getting tools only (no seeds needed)");
+                BankingManager.BankingResult result = bankingManager.prepareForCheckHealth(contract);
+                if (result.success) {
+                    transitionTo(ContractState.GO_TO_PATCH);
+                } else {
+                    log.error("Failed to get tools from bank");
+                    transitionTo(ContractState.ERROR);
+                }
+                return;
+            }
         }
         
         int seedId = contractManager.getCurrentContractSeedId();
@@ -418,6 +443,10 @@ public class FarmingContractScript extends Script {
         Produce contract = contractManager.getCurrentContract();
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
         
+        // For bushes and cacti, check-health completes the contract but we need to continue clearing
+        PatchImplementation type = location.getType();
+        boolean isBushOrCactus = (type == PatchImplementation.BUSH || type == PatchImplementation.CACTUS);
+        
         // Create handler if it doesn't exist
         PatchHandler handler = patchHandlers.get(location);
         if (handler == null) {
@@ -433,7 +462,17 @@ public class FarmingContractScript extends Script {
         if (handler.checkHealth()) {
             log.info("Check-health completed");
             context.setCheckHealthCompleted(true);
-            transitionTo(ContractState.HARVEST);
+            
+            if (isBushOrCactus) {
+                log.info("Bush/Cactus contract complete after check-health, but patch needs full clearing");
+                // Set flag to continue clearing after contract completion
+                clearingCompletedContract = true;
+                // Don't go to COMPLETE - continue to harvest and clear
+                transitionTo(ContractState.HARVEST);
+            } else {
+                // Trees need special handling for payment
+                transitionTo(ContractState.HARVEST);
+            }
         } else {
             log.error("Failed to check health");
             sleep(2000);
@@ -495,7 +534,8 @@ public class FarmingContractScript extends Script {
         if (handler.clear()) {
             log.info("Patch cleared");
             
-            if (contractManager.isContractJustCompleted()) {
+            if (contractManager.isContractJustCompleted() || clearingCompletedContract) {
+                clearingCompletedContract = false;
                 transitionTo(ContractState.TURN_IN_CONTRACT);
             } else {
                 transitionTo(ContractState.GO_TO_PATCH);

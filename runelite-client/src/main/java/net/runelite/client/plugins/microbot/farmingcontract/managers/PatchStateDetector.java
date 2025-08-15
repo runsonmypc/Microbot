@@ -1,6 +1,8 @@
 package net.runelite.client.plugins.microbot.farmingcontract.managers;
 
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.GameObject;
+import net.runelite.api.ObjectComposition;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.farmingcontract.data.PatchLocation;
@@ -10,6 +12,12 @@ import net.runelite.client.plugins.microbot.questhelper.helpers.mischelpers.farm
 import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.timetracking.farming.PatchImplementation;
 import net.runelite.client.plugins.timetracking.farming.Produce;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Detects and interprets farming patch states.
@@ -71,19 +79,22 @@ public class PatchStateDetector {
         
         log.info("Detecting patch state for {} at {}", contract.getName(), patchLocation.getName());
         
-        // Get the farming patch from FarmingWorld
-        FarmingPatch patch = findFarmingPatch(patchLocation);
+        // Find the patch GameObject within the polygon area
+        GameObject patch = findPatchInArea(patchLocation);
         if (patch == null) {
-            log.warn("Could not find farming patch at {}", patchLocation.getLocation());
+            log.warn("Could not find patch object in area for {}", patchLocation.getName());
             return createEmptyState(); // Assume empty if we can't find it
         }
         
-        // Since FarmingPatch doesn't have getCropState(), we'll return a simplified state
-        // In practice, you'd need to check the actual patch object in the game
-        log.info("Simplified patch state detection for {}", contract.getName());
+        // Infer the state from the patch's actions
+        CropState cropState = inferStateFromActions(patch);
+        log.info("Detected crop state: {} for {}", cropState, contract.getName());
         
-        // For now, assume patch is empty and needs planting
-        return createEmptyState();
+        // Check if it's the correct crop (simplified - assumes correct if not empty)
+        boolean hasCorrectCrop = cropState != CropState.EMPTY && cropState != CropState.DEAD;
+        
+        // Convert CropState to our PatchState
+        return interpretCropState(cropState, contract, hasCorrectCrop);
     }
     
     /**
@@ -131,11 +142,105 @@ public class PatchStateDetector {
     
     // Helper methods
     
-    private FarmingPatch findFarmingPatch(PatchLocation patchLocation) {
-        // Since FarmingWorld doesn't have getFarmingPatches() method,
-        // we can't actually look up patches this way
-        // This would need to be implemented differently based on available API
+    /**
+     * Find a patch GameObject within the polygon area.
+     * Based on the old script's findPatchUsingActions method.
+     */
+    private GameObject findPatchInArea(PatchLocation patchLocation) {
+        if (patchLocation == null || patchLocation.getArea() == null) {
+            return null;
+        }
+        
+        java.awt.Polygon area = patchLocation.getArea();
+        
+        // Get all GameObjects and filter those within the polygon
+        List<GameObject> allObjects = Rs2GameObject.getGameObjects();
+        List<GameObject> objectsInArea = allObjects.stream()
+            .filter(obj -> obj != null && 
+                   area.contains(obj.getWorldLocation().getX(), 
+                                obj.getWorldLocation().getY()))
+            .collect(Collectors.toList());
+        
+        // Return first valid object found
+        for (GameObject obj : objectsInArea) {
+            if (obj != null) {
+                log.debug("Found object in patch area: ID={} at {}", 
+                         obj.getId(), obj.getWorldLocation());
+                return obj;
+            }
+        }
+        
+        log.warn("No objects found in patch area for {}", patchLocation.getName());
         return null;
+    }
+    
+    /**
+     * Infer crop state from GameObject actions.
+     * Ported from the old script's inferStateFromActions method.
+     */
+    private CropState inferStateFromActions(GameObject patch) {
+        if (patch == null) return CropState.EMPTY;
+        
+        // Use ignoreImpostor=false for farming patches to get current state's actions
+        ObjectComposition comp = Rs2GameObject.convertToObjectComposition(patch, false);
+        if (comp == null || comp.getActions() == null) return CropState.EMPTY;
+        
+        // Log available actions for debugging
+        log.info("inferStateFromActions - Patch ID: {}, Actions: {}", 
+                patch.getId(), Arrays.toString(comp.getActions()));
+        
+        // Collect all non-null actions
+        Set<String> actions = new HashSet<>();
+        for (String action : comp.getActions()) {
+            if (action != null && !action.isEmpty()) {
+                actions.add(action.toLowerCase());
+            }
+        }
+        
+        // Remove "Guide" and "Inspect" as they're always present
+        actions.remove("guide");
+        actions.remove("inspect");
+        
+        // If no actions remain after removing Guide/Inspect, patch is empty
+        if (actions.isEmpty()) {
+            return CropState.EMPTY;
+        }
+        
+        // If only "Rake" remains, patch is empty with weeds
+        if (actions.size() == 1 && actions.contains("rake")) {
+            return CropState.EMPTY;
+        }
+        
+        // Check remaining actions for specific states
+        for (String action : actions) {
+            // Check-health = Tree/fruit tree/bush ready for check
+            if (action.equalsIgnoreCase("check-health") || 
+                action.equalsIgnoreCase("check health") || 
+                action.equalsIgnoreCase("check")) {
+                return CropState.UNCHECKED;
+            }
+            
+            // Pick/Harvest = Regular crops ready to harvest
+            if (action.equalsIgnoreCase("pick") || 
+                action.equalsIgnoreCase("harvest") ||
+                action.equalsIgnoreCase("pick-from") || 
+                action.equalsIgnoreCase("pick-spine")) {
+                return CropState.HARVESTABLE;
+            }
+            
+            // Chop = Tree that needs to be removed
+            if (action.contains("chop")) {
+                return CropState.HARVESTABLE;
+            }
+            
+            // Clear = Something clearable (dead plants, stumps, etc.)
+            if (action.equalsIgnoreCase("clear")) {
+                return CropState.DEAD;
+            }
+        }
+        
+        // If we have other actions but none match specific states, patch is growing
+        return CropState.GROWING;
     }
     
     private boolean isCorrectCrop(FarmingPatch patch, Produce contract) {
@@ -164,17 +269,21 @@ public class PatchStateDetector {
                             "Growing wrong crop - needs clearing");
                 }
                 
+            case UNCHECKED:
+                // Trees, bushes, cacti need check-health when fully grown
+                if (hasCorrectCrop) {
+                    return new PatchState(cropState, false, false, false, true, false, false, false, true,
+                            "Ready for check-health");
+                } else {
+                    return new PatchState(cropState, false, false, false, false, true, false, false, false,
+                            "Wrong crop ready for check - needs clearing");
+                }
+                
             case HARVESTABLE:
                 if (hasCorrectCrop) {
-                    // Check if it needs check-health or harvesting
-                    boolean needsCheck = needsCheckHealthForType(contract.getPatchImplementation());
-                    if (needsCheck) {
-                        return new PatchState(cropState, false, false, false, true, false, false, false, true,
-                                "Ready for check-health");
-                    } else {
-                        return new PatchState(cropState, false, false, true, false, false, false, false, true,
-                                "Ready to harvest");
-                    }
+                    // Regular harvesting for herbs, allotments, flowers
+                    return new PatchState(cropState, false, false, true, false, false, false, false, true,
+                            "Ready to harvest");
                 } else {
                     return new PatchState(cropState, false, false, false, false, true, false, false, false,
                             "Wrong crop ready - needs clearing");
