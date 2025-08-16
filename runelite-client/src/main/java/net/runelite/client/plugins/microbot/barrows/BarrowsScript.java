@@ -58,6 +58,7 @@ public class BarrowsScript extends Script {
     private int minRuneAmt;
     public static List<String> barrowsPieces = new ArrayList<>();
     private ScheduledFuture<?> WalkToTheChestFuture;
+    private ScheduledFuture<?> puzzleMonitorFuture;
     private WorldPoint Chest = new WorldPoint(3552,9694,0);
     private int minForgottenBrews = 0;
     public static boolean outOfPoweredStaffCharges = false;
@@ -105,6 +106,23 @@ public class BarrowsScript extends Script {
                         }
                     }
                     firstRun = false;
+                    
+                    // Start high-priority puzzle monitoring thread
+                    if (puzzleMonitorFuture == null || puzzleMonitorFuture.isCancelled() || puzzleMonitorFuture.isDone()) {
+                        puzzleMonitorFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
+                            if (!super.isRunning()) return;
+                            
+                            // Check if puzzle widgets are open
+                            int[] puzzleWidgets = {1638413, 1638415, 1638417};
+                            for (int widget : puzzleWidgets) {
+                                if (Rs2Widget.getWidget(widget) != null) {
+                                    Microbot.log("URGENT: Puzzle detected! Solving immediately!");
+                                    solvePuzzle();
+                                    return;
+                                }
+                            }
+                        }, 0, 100, TimeUnit.MILLISECONDS);
+                    }
                     
                     // Check supplies immediately after first run setup
                     suppliesCheck(config);
@@ -616,7 +634,7 @@ public class BarrowsScript extends Script {
                         }
                     } else {
                         // Not in combat, do normal checks
-                        solvePuzzle();
+                        // solvePuzzle(); // Removed - now handled by dedicated high-priority monitor
                         checkForBrother(config);
                         eatFood();
                         outOfSupplies(config);
@@ -648,7 +666,7 @@ public class BarrowsScript extends Script {
                         startWalkingToTheChest();
                     }
 
-                    solvePuzzle();
+                    // solvePuzzle(); // Removed - now handled by dedicated high-priority monitor
                     checkForBrother(config);
                     
                     // If chest was already looted (via game message), handle teleporting out
@@ -2337,6 +2355,9 @@ public class BarrowsScript extends Script {
     @Override
     public void shutdown() {
         specWeaponHandler.reset();
+        if (puzzleMonitorFuture != null) {
+            puzzleMonitorFuture.cancel(true);
+        }
         super.shutdown();
     }
 }
