@@ -9,7 +9,7 @@ public enum ContractState {
     TALK_TO_JANE("Talking to Jane for contract"),
     
     // Preparation states
-    GET_SEEDS("Getting seeds from bank"),
+    GET_ITEMS("Getting items from bank"),
     GET_TOOLS("Getting tools from bank"),
     
     // Farming states

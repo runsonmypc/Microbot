@@ -27,21 +27,26 @@ public class StateTransitionManager {
         // CHECK_CONTRACT can transition to multiple states based on current situation
         addTransitions(ContractState.CHECK_CONTRACT,
             ContractState.TALK_TO_JANE,    // No contract
-            ContractState.GET_SEEDS,        // Have contract, need seeds
+            ContractState.GET_ITEMS,        // Have contract, need items
             ContractState.GO_TO_PATCH,      // Have everything, go to patch
+            ContractState.CHECK_HEALTH,     // Crop ready for check-health
+            ContractState.HARVEST,          // Crop ready to harvest
+            ContractState.CLEAR_PATCH,      // Patch needs clearing
+            ContractState.WAIT_FOR_GROWTH,  // Crop still growing
             ContractState.TURN_IN_CONTRACT, // Contract complete
             ContractState.ERROR);
             
         // TALK_TO_JANE transitions
         addTransitions(ContractState.TALK_TO_JANE,
-            ContractState.GET_SEEDS,        // Got contract
+            ContractState.GET_ITEMS,        // Got contract
             ContractState.CHECK_CONTRACT,   // Check again
             ContractState.ERROR);
             
-        // GET_SEEDS transitions
-        addTransitions(ContractState.GET_SEEDS,
+        // GET_ITEMS transitions
+        addTransitions(ContractState.GET_ITEMS,
             ContractState.GET_TOOLS,        // Need tools too
             ContractState.GO_TO_PATCH,      // Have everything
+            ContractState.CHECK_HEALTH,     // Ready for check-health
             ContractState.TALK_TO_JANE,     // Request easier contract
             ContractState.ERROR);
             

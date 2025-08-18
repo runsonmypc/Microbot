@@ -89,8 +89,8 @@ public class FarmingContractScript extends Script {
                         handleTalkToJane();
                         break;
                         
-                    case GET_SEEDS:
-                        handleGetSeeds();
+                    case GET_ITEMS:
+                        handleGetItems();
                         break;
                         
                     case GO_TO_PATCH:
@@ -178,14 +178,16 @@ public class FarmingContractScript extends Script {
                 
                 // Choose action based on actual patch state
                 if (patchState.needsChecking) {
-                    log.info("Patch needs check-health for contract");
-                    transitionTo(ContractState.CHECK_HEALTH);
+                    log.info("Patch needs check-health for contract, getting tools first");
+                    transitionTo(ContractState.GET_ITEMS);
                 } else if (patchState.needsHarvesting) {
-                    transitionTo(ContractState.HARVEST);
+                    log.info("Patch needs harvesting, getting tools first");
+                    transitionTo(ContractState.GET_ITEMS);
                 } else if (patchState.needsClearing) {
-                    transitionTo(ContractState.CLEAR_PATCH);
+                    log.info("Patch needs clearing, getting tools first");
+                    transitionTo(ContractState.GET_ITEMS);
                 } else if (patchState.needsPlanting) {
-                    transitionTo(ContractState.GET_SEEDS);
+                    transitionTo(ContractState.GET_ITEMS);
                 } else if (patchState.isGrowing) {
                     transitionTo(ContractState.WAIT_FOR_GROWTH);
                 } else {
@@ -269,30 +271,33 @@ public class FarmingContractScript extends Script {
         }
         
         if (contractManager.getCurrentContract() != null) {
-            // Check patch state first before getting seeds
+            // Check patch state first before getting items
             log.info("Got contract, checking patch state first");
             transitionTo(ContractState.CHECK_CONTRACT);
         }
     }
     
     /**
-     * Get seeds from bank.
+     * Get items (tools and/or seeds) from bank.
      */
-    private void handleGetSeeds() {
+    private void handleGetItems() {
         Produce contract = contractManager.getCurrentContract();
         if (contract == null) {
             transitionTo(ContractState.CHECK_CONTRACT);
             return;
         }
         
-        // First check the actual patch state - we might not need seeds!
+        // First check the actual patch state
         PatchLocation location = FarmingContractData.getPatchLocation(contract);
         if (location != null) {
             PatchStateDetector.PatchState patchState = stateDetector.detectPatchState(contract, location);
             
-            // If patch needs check-health, we don't need seeds, just tools
-            if (patchState.needsChecking) {
-                log.info("Patch needs check-health, getting tools only (no seeds needed)");
+            // Determine what we need based on patch state
+            if (patchState.needsChecking || patchState.needsHarvesting || patchState.needsClearing) {
+                log.info("Patch needs check-health/harvest/clear cycle");
+                
+                // For now, use prepareForCheckHealth which gets spade
+                // TODO: Check if the crop in patch matches contract to decide if we need seeds too
                 BankingManager.BankingResult result = bankingManager.prepareForCheckHealth(contract);
                 if (result.success) {
                     transitionTo(ContractState.GO_TO_PATCH);
@@ -302,34 +307,37 @@ public class FarmingContractScript extends Script {
                 }
                 return;
             }
-        }
-        
-        int seedId = contractManager.getCurrentContractSeedId();
-        int seedsRequired = contractManager.getSeedsRequired();
-        
-        // Check if we already have seeds
-        if (Rs2Inventory.count(seedId) >= seedsRequired) {
-            log.info("Already have required seeds");
-            transitionTo(ContractState.GO_TO_PATCH);
-            return;
-        }
-        
-        // Bank for seeds and tools
-        BankingManager.BankingResult result = bankingManager.prepareForPlanting(contract);
-        if (!result.success) {
-            log.error("Failed to get items from bank");
             
-            // Try requesting easier contract
-            String currentTier = contractManager.getContractTier();
-            String newTier = contractManager.requestEasierContract(currentTier);
-            
-            if (newTier != null) {
-                log.info("Requesting easier contract tier: {}", newTier);
-                transitionTo(ContractState.TALK_TO_JANE);
-            } else {
-                transitionTo(ContractState.ERROR);
+            // If patch needs planting, get seeds and tools
+            if (patchState.needsPlanting) {
+                int seedId = contractManager.getCurrentContractSeedId();
+                int seedsRequired = contractManager.getSeedsRequired();
+                
+                // Check if we already have seeds
+                if (Rs2Inventory.count(seedId) >= seedsRequired) {
+                    log.info("Already have required seeds");
+                    transitionTo(ContractState.GO_TO_PATCH);
+                    return;
+                }
+                
+                // Bank for seeds and tools
+                BankingManager.BankingResult result = bankingManager.prepareForPlanting(contract);
+                if (!result.success) {
+                    log.error("Failed to get items from bank");
+                    
+                    // Try requesting easier contract
+                    String currentTier = contractManager.getContractTier();
+                    String newTier = contractManager.requestEasierContract(currentTier);
+                    
+                    if (newTier != null) {
+                        log.info("Requesting easier contract tier: {}", newTier);
+                        transitionTo(ContractState.TALK_TO_JANE);
+                    } else {
+                        transitionTo(ContractState.ERROR);
+                    }
+                    return;
+                }
             }
-            return;
         }
         
         transitionTo(ContractState.GO_TO_PATCH);
@@ -352,11 +360,11 @@ public class FarmingContractScript extends Script {
             return;
         }
         
-        // Walk to patch
-        if (Rs2Player.getWorldLocation().distanceTo(location.getLocation()) > 20) {
+        // Walk to patch - need to be close to interact (within 5 tiles)
+        if (Rs2Player.getWorldLocation().distanceTo(location.getLocation()) > 5) {
             log.info("Walking to {} patch", location.getName());
             Rs2Walker.walkTo(location.getLocation());
-            sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(location.getLocation()) < 20, 30000);
+            sleepUntil(() -> Rs2Player.getWorldLocation().distanceTo(location.getLocation()) <= 5, 30000);
         }
         
         // Find patch object

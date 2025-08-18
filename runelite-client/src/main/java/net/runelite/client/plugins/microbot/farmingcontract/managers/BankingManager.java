@@ -113,10 +113,10 @@ public class BankingManager {
     
     /**
      * Prepare for check-health on bushes/trees.
-     * Only needs spade, no seeds.
+     * Gets all tools needed for the complete cycle (check-health, harvest, clear).
      */
     public BankingResult prepareForCheckHealth(Produce contract) {
-        log.info("Preparing for check-health on {}", contract.getName());
+        log.info("Preparing for check-health/harvest/clear cycle on {}", contract.getName());
         
         if (!openBankSafely()) {
             return BankingResult.failure("Could not open bank");
@@ -125,8 +125,36 @@ public class BankingManager {
         // Deposit everything except tools
         depositUnnecessaryItems(contract);
         
-        // Always need spade for clearing after check-health
-        boolean hasSpade = withdrawSpade();
+        // Get all tools needed for complete cycle
+        boolean hasTools = true;
+        
+        // Always need spade for clearing
+        if (!withdrawSpade()) {
+            log.warn("Could not get spade");
+            hasTools = false;
+        }
+        
+        // Need rake for clearing to empty state
+        if (!Rs2Inventory.contains(FarmingContractData.Tools.RAKE)) {
+            if (Rs2Bank.hasBankItem(FarmingContractData.Tools.RAKE, 1)) {
+                Rs2Bank.withdrawX(FarmingContractData.Tools.RAKE, 1);
+                log.info("Withdrew rake");
+            } else {
+                log.warn("No rake in bank");
+                hasTools = false;
+            }
+        }
+        
+        // Need seed dibber if we'll replant after clearing
+        if (!Rs2Inventory.contains(FarmingContractData.Tools.SEED_DIBBER)) {
+            if (Rs2Bank.hasBankItem(FarmingContractData.Tools.SEED_DIBBER, 1)) {
+                Rs2Bank.withdrawX(FarmingContractData.Tools.SEED_DIBBER, 1);
+                log.info("Withdrew seed dibber");
+            } else {
+                log.warn("No seed dibber in bank");
+                // Not critical if we're just clearing
+            }
+        }
         
         // Withdraw coins for trees if needed for clearing
         if (needsCoinsForContract(contract)) {
@@ -134,7 +162,7 @@ public class BankingManager {
         }
         
         Rs2Bank.closeBank();
-        return BankingResult.success(hasSpade, false);
+        return BankingResult.success(hasTools, false);
     }
     
     /**

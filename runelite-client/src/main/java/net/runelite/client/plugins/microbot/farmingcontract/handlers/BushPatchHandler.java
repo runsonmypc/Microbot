@@ -73,7 +73,8 @@ public class BushPatchHandler extends PatchHandler {
         // Bushes need check-health first if not done
         if (!checkHealthCompleted) {
             log.info("Bush needs check-health before harvesting");
-            return performCheckHealth(patch);
+            performCheckHealth(patch);
+            // Don't return here - continue to harvest after check-health!
         }
         
         // Spade is MANDATORY for clearing after harvest
@@ -82,19 +83,19 @@ public class BushPatchHandler extends PatchHandler {
             return false;
         }
         
-        // Harvest berries
-        String action = getHarvestAction(patch);
-        if (action == null) {
-            log.warn("No harvest action available for bush");
-            return false;
-        }
+        // Now actually harvest the berries
+        log.info("Harvesting bush berries");
         
-        log.info("Harvesting bush berries with action: {}", action);
-        
-        // Keep harvesting until no more berries
+        // Keep picking until no more berries (check for "Pick" action)
         int attempts = 0;
         while (attempts < 10) {
-            Rs2GameObject.interact(patch, action);
+            // Check if Pick action still exists
+            if (!Rs2GameObject.hasAction(patch, "Pick")) {
+                log.info("No more berries to pick");
+                break;
+            }
+            
+            Rs2GameObject.interact(patch, "Pick");
             sleepUntil(() -> !Rs2Player.isAnimating(), 5000);
             attempts++;
             
@@ -118,15 +119,22 @@ public class BushPatchHandler extends PatchHandler {
         
         log.info("Clearing bush patch");
         
-        // Default clearing action
-        String action = "Clear";
+        // First pick any remaining berries
+        while (Rs2GameObject.hasAction(patch, "Pick")) {
+            log.info("Picking remaining berries before clearing");
+            Rs2GameObject.interact(patch, "Pick");
+            sleepUntil(() -> !Rs2Player.isAnimating(), 5000);
+            
+            if (Rs2Inventory.isFull()) {
+                log.warn("Inventory full, cannot pick more berries");
+                break;
+            }
+        }
         
-        log.info("Using action '{}' to clear bush", action);
-        Rs2GameObject.interact(patch, action);
-        sleepUntil(() -> {
-            TileObject currentPatch = findPatchObject();
-            return currentPatch == null || !Rs2Player.isAnimating();
-        }, 10000);
+        // Now clear the empty bush
+        log.info("Clearing empty bush");
+        Rs2GameObject.interact(patch, "Clear");
+        sleepUntil(() -> !Rs2Player.isAnimating(), 10000);
         
         // Reset check-health flag for next contract
         checkHealthCompleted = false;
@@ -134,13 +142,6 @@ public class BushPatchHandler extends PatchHandler {
         return true;
     }
     
-    /**
-     * Get the harvest action for the bush.
-     */
-    private String getHarvestAction(TileObject patch) {
-        // Most bushes use "Pick-from" action
-        return "Pick-from";
-    }
     
     /**
      * Check if bush has been checked for health.
