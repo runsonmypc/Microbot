@@ -157,16 +157,40 @@ public class AgilityScript extends Script
 					Optional<String> alchItem = getAlchItem();
 					if (alchItem.isPresent())
 					{
-						// Try efficient alching first
-						if (config.efficientAlching())
+						// Check if we should skip inefficient alchs
+						if (config.skipInefficient())
 						{
-							if (performEfficientAlch(gameObject, alchItem.get(), agilityExp))
+							// Only alch if obstacle is far enough for efficient alching
+							if (gameObject.getWorldLocation().distanceTo(playerWorldLocation) >= 5)
 							{
-								return;
+								if (config.efficientAlching())
+								{
+									if (performEfficientAlch(gameObject, alchItem.get(), agilityExp))
+									{
+										return;
+									}
+								}
+								else
+								{
+									// Still do normal alch if far enough but efficient alching is disabled
+									performNormalAlch(alchItem.get(), currentAgilityXp);
+								}
 							}
+							// Skip alching if obstacle is too close
 						}
-						// Fall back to normal alching
-						performNormalAlch(alchItem.get(), currentAgilityXp);
+						else
+						{
+							// Normal behavior when skipInefficient is disabled
+							if (config.efficientAlching())
+							{
+								if (performEfficientAlch(gameObject, alchItem.get(), agilityExp))
+								{
+									return;
+								}
+							}
+							// Fall back to normal alching
+							performNormalAlch(alchItem.get(), currentAgilityXp);
+						}
 					}
 				}
 				

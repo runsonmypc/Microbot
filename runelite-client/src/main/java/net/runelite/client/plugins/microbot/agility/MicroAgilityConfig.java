@@ -91,10 +91,22 @@ public interface MicroAgilityConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "skipInefficient",
+		name = "Skip Inefficient",
+		description = "Only alch when obstacle is 5+ tiles away (skip inefficient alchs)",
+		position = 7,
+		section = generalSection
+	)
+	default boolean skipInefficient()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "alchSkipChance",
 		name = "Alch Skip Chance",
 		description = "Percentage chance to skip alching on any obstacle (0-100)",
-		position = 7,
+		position = 8,
 		section = generalSection
 	)
 	default int alchSkipChance()
