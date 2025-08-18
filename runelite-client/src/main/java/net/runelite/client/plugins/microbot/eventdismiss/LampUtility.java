@@ -130,22 +130,4 @@ public class LampUtility {
         return Rs2Inventory.contains(ItemID.LAMP);
     }
     
-    /**
-     * Gets a formatted string showing lamp usage statistics.
-     * 
-     * @return A formatted string with lamp usage stats
-     */
-    public static String getUsageStatistics() {
-        int used = lampsUsed.get();
-        long lastUsed = lastLampTime.get();
-        
-        if (used == 0) {
-            return "No lamps used yet";
-        }
-        
-        long timeSinceLastUse = System.currentTimeMillis() - lastUsed;
-        long secondsSince = timeSinceLastUse / 1000;
-        
-        return String.format("Lamps used: %d | Last: %ds ago", used, secondsSince);
-    }
 }
