@@ -169,4 +169,19 @@ public interface AgilityCourseHandler
 	default int getLootDistance() {
 		return 1;
 	}
+
+	default boolean isObstacleComplete(int currentXp, int previousXp, long lastMovingTime, int waitDelay) {
+		// Check if we gained XP (obstacle complete)
+		if (currentXp > previousXp) {
+			return true;
+		}
+		
+		// Check if still moving/animating
+		if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
+			return false;
+		}
+		
+		// Check if we've waited long enough after movement stopped
+		return System.currentTimeMillis() - lastMovingTime >= waitDelay;
+	}
 }

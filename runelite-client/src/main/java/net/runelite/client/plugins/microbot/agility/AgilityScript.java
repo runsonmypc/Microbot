@@ -105,21 +105,23 @@ public class AgilityScript extends Script
 				// Check if we're still completing an obstacle
 				if (plugin.getCourseHandler().getCurrentObstacleIndex() > 0)
 				{
-					// Disable XP checks for Colossal Wyrm courses (they have multi-XP drop obstacles)
-					boolean isColossalWyrm = config.agilityCourse().name().contains("COLOSSAL_WYRM");
+					boolean obstacleComplete = plugin.getCourseHandler().isObstacleComplete(
+						currentAgilityXp, lastAgilityXp, lastMovingTime, waitDelay);
 					
-					// If we gained XP and not Colossal Wyrm, obstacle is complete
-					if (!isColossalWyrm && currentAgilityXp > lastAgilityXp) {
+					if (obstacleComplete && currentAgilityXp > lastAgilityXp)
+					{
 						lastAgilityXp = currentAgilityXp;
 						// Small humanization delay after XP drop (100-300ms)
 						sleep(100, 300);
-					} else if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-						// Still moving, update timestamp and generate new random wait delay
-						lastMovingTime = System.currentTimeMillis();
-						waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
-						return;
-					} else if (System.currentTimeMillis() - lastMovingTime < waitDelay) {
-						// Not moving but haven't waited long enough yet
+					}
+					else if (!obstacleComplete)
+					{
+						// Update timing if still moving
+						if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+						{
+							lastMovingTime = System.currentTimeMillis();
+							waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
+						}
 						return;
 					}
 				}
@@ -129,45 +131,9 @@ public class AgilityScript extends Script
 					return;
 				}
 
-				if (plugin.getCourseHandler() instanceof PrifddinasCourse)
+				if (handleCourseSpecificActions(playerWorldLocation))
 				{
-					PrifddinasCourse course = (PrifddinasCourse) plugin.getCourseHandler();
-					if (course.handlePortal())
-					{
-						return;
-					}
-
-					if (course.handleWalkToStart(playerWorldLocation))
-					{
-						return;
-					}
-				}
-				else if(plugin.getCourseHandler() instanceof WerewolfCourse)
-				{
-					WerewolfCourse course = (WerewolfCourse) plugin.getCourseHandler();
-					if(course.handleFirstSteppingStone(playerWorldLocation))
-					{
-						return;
-					}
-					if(course.handleStickPickup(playerWorldLocation))
-					{
-						return;
-					}
-					else if(course.handleSlide())
-					{
-						return;
-					}
-					else if(course.handleStickReturn(playerWorldLocation))
-					{
-						return;
-					}
-				}
-				else if (!(plugin.getCourseHandler() instanceof GnomeStrongholdCourse))
-				{
-					if (plugin.getCourseHandler().handleWalkToStart(playerWorldLocation))
-					{
-						return;
-					}
+					return;
 				}
 
 				final int agilityExp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
@@ -186,57 +152,21 @@ public class AgilityScript extends Script
 				}
 
 				// Handle alchemy if enabled
-				if (config.alchemy()) {
-					// Check if we should skip alching based on configured chance
-					if (Math.random() * 100 < config.alchSkipChance()) {
-						// Skip alching this obstacle
-					} else {
-						Optional<String> alchItem = getAlchItem();
-						if (alchItem.isPresent()) {
-						// Check for efficient alching conditions
-						if (config.efficientAlching() && 
-							gameObject.getWorldLocation().distanceTo(playerWorldLocation) >= 5) {
-							// Efficient alching: click, alch, click
-							if (Rs2GameObject.interact(gameObject)) {
-								sleep(100, 200);
-								Rs2Magic.alch(alchItem.get(), 50, 75);
-								Rs2GameObject.interact(gameObject);
-								plugin.getCourseHandler().waitForCompletion(agilityExp, 
-									Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
-								Rs2Antiban.actionCooldown();
-								Rs2Antiban.takeMicroBreakByChance();
-								// Update last XP after completing obstacle
-								lastAgilityXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+				if (shouldPerformAlch())
+				{
+					Optional<String> alchItem = getAlchItem();
+					if (alchItem.isPresent())
+					{
+						// Try efficient alching first
+						if (config.efficientAlching())
+						{
+							if (performEfficientAlch(gameObject, alchItem.get(), agilityExp))
+							{
 								return;
 							}
-						} else {
-							// Normal alching - but skip if at first obstacle and still mid-obstacle
-							if (plugin.getCourseHandler().getCurrentObstacleIndex() == 0) {
-								// Disable XP checks for Colossal Wyrm courses
-								boolean isColossalWyrm = config.agilityCourse().name().contains("COLOSSAL_WYRM");
-								
-								// Skip if we haven't gained XP (unless Colossal Wyrm) AND (still moving OR haven't waited long enough)
-								if (isColossalWyrm || currentAgilityXp == lastAgilityXp) {
-									if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-										lastMovingTime = System.currentTimeMillis();
-										waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
-										// Skip alching, we're mid-obstacle
-									} else if (System.currentTimeMillis() - lastMovingTime < waitDelay) {
-										// Skip alching, still waiting
-									} else {
-										// Waited long enough, alch
-										Rs2Magic.alch(alchItem.get(), 50, 75);
-									}
-								} else {
-									// Gained XP (and not Colossal Wyrm), safe to alch
-									Rs2Magic.alch(alchItem.get(), 50, 75);
-								}
-							} else {
-								// Not first obstacle, just alch normally
-								Rs2Magic.alch(alchItem.get(), 50, 75);
-							}
 						}
-					}
+						// Fall back to normal alching
+						performNormalAlch(alchItem.get(), currentAgilityXp);
 					}
 				}
 				
@@ -363,5 +293,88 @@ public class AgilityScript extends Script
 			Rs2Inventory.dropAll(ItemID.PIEDISH);
 		}
 		return true;
+	}
+
+	private boolean shouldPerformAlch()
+	{
+		if (!config.alchemy())
+		{
+			return false;
+		}
+		
+		// Check if we should skip alching based on configured chance
+		if (Math.random() * 100 < config.alchSkipChance())
+		{
+			return false;
+		}
+		
+		return getAlchItem().isPresent();
+	}
+
+	private boolean performEfficientAlch(TileObject gameObject, String alchItem, int agilityExp)
+	{
+		WorldPoint playerLocation = Microbot.getClient().getLocalPlayer().getWorldLocation();
+		
+		if (gameObject.getWorldLocation().distanceTo(playerLocation) >= 5)
+		{
+			// Efficient alching: click, alch, click
+			if (Rs2GameObject.interact(gameObject))
+			{
+				sleep(100, 200);
+				Rs2Magic.alch(alchItem, 50, 75);
+				Rs2GameObject.interact(gameObject);
+				plugin.getCourseHandler().waitForCompletion(agilityExp,
+					Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
+				Rs2Antiban.actionCooldown();
+				Rs2Antiban.takeMicroBreakByChance();
+				lastAgilityXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void performNormalAlch(String alchItem, int currentAgilityXp)
+	{
+		// At first obstacle, check if we're mid-obstacle before alching
+		if (plugin.getCourseHandler().getCurrentObstacleIndex() == 0)
+		{
+			// Check if obstacle is still being completed
+			if (!plugin.getCourseHandler().isObstacleComplete(currentAgilityXp, lastAgilityXp, lastMovingTime, waitDelay))
+			{
+				// Update timing if still moving
+				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+				{
+					lastMovingTime = System.currentTimeMillis();
+					waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
+				}
+				return; // Skip alching while mid-obstacle
+			}
+		}
+		
+		// Safe to alch
+		Rs2Magic.alch(alchItem, 50, 75);
+	}
+
+	private boolean handleCourseSpecificActions(WorldPoint playerWorldLocation)
+	{
+		if (plugin.getCourseHandler() instanceof PrifddinasCourse)
+		{
+			PrifddinasCourse course = (PrifddinasCourse) plugin.getCourseHandler();
+			return course.handlePortal() || course.handleWalkToStart(playerWorldLocation);
+		}
+		else if (plugin.getCourseHandler() instanceof WerewolfCourse)
+		{
+			WerewolfCourse course = (WerewolfCourse) plugin.getCourseHandler();
+			return course.handleFirstSteppingStone(playerWorldLocation)
+				|| course.handleStickPickup(playerWorldLocation)
+				|| course.handleSlide()
+				|| course.handleStickReturn(playerWorldLocation);
+		}
+		else if (!(plugin.getCourseHandler() instanceof GnomeStrongholdCourse))
+		{
+			return plugin.getCourseHandler().handleWalkToStart(playerWorldLocation);
+		}
+		return false;
 	}
 }

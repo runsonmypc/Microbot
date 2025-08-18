@@ -5,6 +5,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.client.plugins.microbot.agility.models.AgilityObstacleModel;
 import net.runelite.client.plugins.microbot.util.misc.Operation;
+import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
 public class ColossalWyrmAdvancedCourse implements AgilityCourseHandler
 {
@@ -31,5 +32,17 @@ public class ColossalWyrmAdvancedCourse implements AgilityCourseHandler
 	public Integer getRequiredLevel()
 	{
 		return 62;
+	}
+
+	@Override
+	public boolean isObstacleComplete(int currentXp, int previousXp, long lastMovingTime, int waitDelay) {
+		// Colossal Wyrm courses have multi-XP drop obstacles
+		// We ignore XP checks and only rely on movement/animation
+		if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
+			return false;
+		}
+		
+		// Check if we've waited long enough after movement stopped
+		return System.currentTimeMillis() - lastMovingTime >= waitDelay;
 	}
 }
