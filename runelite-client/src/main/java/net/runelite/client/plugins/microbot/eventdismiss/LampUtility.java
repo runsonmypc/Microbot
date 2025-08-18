@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.EnumMap;
 import java.util.Map;
 
+import static net.runelite.client.plugins.microbot.eventdismiss.LampWidgetConstants.*;
+
 /**
  * Utility class for lamp-related functionality in the Event Handler plugin.
  * Centralizes lamp usage logic and skill widget mapping to eliminate code duplication.
@@ -17,39 +19,34 @@ import java.util.Map;
 @Slf4j
 public class LampUtility {
     
-    // Widget constants
-    public static final int LAMP_WIDGET_GROUP = 240;
-    public static final int LAMP_WIDGET_ROOT = 0;
-    public static final int LAMP_CONFIRM_BUTTON = 26;
-    
     // Skill to widget ID mapping using EnumMap for better performance
     private static final Map<Skill, Integer> SKILL_WIDGET_MAP = new EnumMap<>(Skill.class);
     
     static {
-        // Initialize the skill to widget ID mapping
-        SKILL_WIDGET_MAP.put(Skill.ATTACK, 2);
-        SKILL_WIDGET_MAP.put(Skill.STRENGTH, 3);
-        SKILL_WIDGET_MAP.put(Skill.RANGED, 4);
-        SKILL_WIDGET_MAP.put(Skill.MAGIC, 5);
-        SKILL_WIDGET_MAP.put(Skill.DEFENCE, 6);
-        SKILL_WIDGET_MAP.put(Skill.HITPOINTS, 7);
-        SKILL_WIDGET_MAP.put(Skill.PRAYER, 8);
-        SKILL_WIDGET_MAP.put(Skill.AGILITY, 9);
-        SKILL_WIDGET_MAP.put(Skill.HERBLORE, 10);
-        SKILL_WIDGET_MAP.put(Skill.THIEVING, 11);
-        SKILL_WIDGET_MAP.put(Skill.CRAFTING, 12);
-        SKILL_WIDGET_MAP.put(Skill.RUNECRAFT, 13);
-        SKILL_WIDGET_MAP.put(Skill.SLAYER, 14);
-        SKILL_WIDGET_MAP.put(Skill.FARMING, 15);
-        SKILL_WIDGET_MAP.put(Skill.MINING, 16);
-        SKILL_WIDGET_MAP.put(Skill.SMITHING, 17);
-        SKILL_WIDGET_MAP.put(Skill.FISHING, 18);
-        SKILL_WIDGET_MAP.put(Skill.COOKING, 19);
-        SKILL_WIDGET_MAP.put(Skill.FIREMAKING, 20);
-        SKILL_WIDGET_MAP.put(Skill.WOODCUTTING, 21);
-        SKILL_WIDGET_MAP.put(Skill.FLETCHING, 22);
-        SKILL_WIDGET_MAP.put(Skill.CONSTRUCTION, 23);
-        SKILL_WIDGET_MAP.put(Skill.HUNTER, 24);
+        // Initialize the skill to widget ID mapping using externalized constants
+        SKILL_WIDGET_MAP.put(Skill.ATTACK, WIDGET_ATTACK);
+        SKILL_WIDGET_MAP.put(Skill.STRENGTH, WIDGET_STRENGTH);
+        SKILL_WIDGET_MAP.put(Skill.RANGED, WIDGET_RANGED);
+        SKILL_WIDGET_MAP.put(Skill.MAGIC, WIDGET_MAGIC);
+        SKILL_WIDGET_MAP.put(Skill.DEFENCE, WIDGET_DEFENCE);
+        SKILL_WIDGET_MAP.put(Skill.HITPOINTS, WIDGET_HITPOINTS);
+        SKILL_WIDGET_MAP.put(Skill.PRAYER, WIDGET_PRAYER);
+        SKILL_WIDGET_MAP.put(Skill.AGILITY, WIDGET_AGILITY);
+        SKILL_WIDGET_MAP.put(Skill.HERBLORE, WIDGET_HERBLORE);
+        SKILL_WIDGET_MAP.put(Skill.THIEVING, WIDGET_THIEVING);
+        SKILL_WIDGET_MAP.put(Skill.CRAFTING, WIDGET_CRAFTING);
+        SKILL_WIDGET_MAP.put(Skill.RUNECRAFT, WIDGET_RUNECRAFT);
+        SKILL_WIDGET_MAP.put(Skill.SLAYER, WIDGET_SLAYER);
+        SKILL_WIDGET_MAP.put(Skill.FARMING, WIDGET_FARMING);
+        SKILL_WIDGET_MAP.put(Skill.MINING, WIDGET_MINING);
+        SKILL_WIDGET_MAP.put(Skill.SMITHING, WIDGET_SMITHING);
+        SKILL_WIDGET_MAP.put(Skill.FISHING, WIDGET_FISHING);
+        SKILL_WIDGET_MAP.put(Skill.COOKING, WIDGET_COOKING);
+        SKILL_WIDGET_MAP.put(Skill.FIREMAKING, WIDGET_FIREMAKING);
+        SKILL_WIDGET_MAP.put(Skill.WOODCUTTING, WIDGET_WOODCUTTING);
+        SKILL_WIDGET_MAP.put(Skill.FLETCHING, WIDGET_FLETCHING);
+        SKILL_WIDGET_MAP.put(Skill.CONSTRUCTION, WIDGET_CONSTRUCTION);
+        SKILL_WIDGET_MAP.put(Skill.HUNTER, WIDGET_HUNTER);
     }
     
     /**
