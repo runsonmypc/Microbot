@@ -336,9 +336,15 @@ public class AgilityScript extends Script
 
 	private void performNormalAlch(String alchItem, int currentAgilityXp)
 	{
-		// At first obstacle, check if we're mid-obstacle before alching
+		// At first obstacle, check if we're mid-obstacle or just returned from walking
 		if (plugin.getCourseHandler().getCurrentObstacleIndex() == 0)
 		{
+			// Skip alching if we're walking or recently finished walking (e.g., from Rs2Walker)
+			if (Rs2Player.isWalking())
+			{
+				return; // Don't alch while walking to start
+			}
+			
 			// Check if obstacle is still being completed
 			if (!plugin.getCourseHandler().isObstacleComplete(currentAgilityXp, lastAgilityXp, lastMovingTime, waitDelay))
 			{
