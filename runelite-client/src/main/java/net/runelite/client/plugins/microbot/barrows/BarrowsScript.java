@@ -623,6 +623,9 @@ public class BarrowsScript extends Script {
                             if(currentRP >= targetRP) {
                                 Microbot.log("In combat with non-brother but have enough RP (" + currentRP + "), ignoring and continuing to chest");
                                 // Don't engage further, just continue to chest
+                                if (!Rs2Player.isMoving()) {
+                                    startWalkingToTheChest();
+                                }
                                 // Skip gainRP since we have enough
                             } else {
                                 // We need more RP, let gainRP handle it
@@ -867,6 +870,20 @@ public class BarrowsScript extends Script {
                                     break;
                                 }
                                 
+                                // CRITICAL: Check if a brother spawned during looting attempts
+                                boolean brotherSpawned = false;
+                                try {
+                                    brotherSpawned = (Microbot.getClient().getHintArrowNpc() != null);
+                                } catch (Exception e) {
+                                    // No hint arrow
+                                }
+                                
+                                if (brotherSpawned) {
+                                    Microbot.log("Brother spawned during chest interaction! Must kill before looting.");
+                                    // Exit the looting loop to handle the brother
+                                    break;
+                                }
+                                
                                 attempts++;
                                 if (attempts > 10) {
                                     Microbot.log("Failed to loot chest after 10 attempts, breaking out");
@@ -877,6 +894,18 @@ public class BarrowsScript extends Script {
                                 if (Rs2GameObject.interact(chest, "Search")) {
                                     // Wait a bit for the loot to appear and message to trigger
                                     sleep(1000, 2000);
+                                    
+                                    // Check again after interaction in case brother spawned
+                                    try {
+                                        brotherSpawned = (Microbot.getClient().getHintArrowNpc() != null);
+                                    } catch (Exception e) {
+                                        // No hint arrow
+                                    }
+                                    
+                                    if (brotherSpawned) {
+                                        Microbot.log("Brother spawned after chest search! Breaking to handle.");
+                                        break;
+                                    }
                                 }
                                 
                                 // Check if we got the loot message
@@ -887,6 +916,22 @@ public class BarrowsScript extends Script {
                                 
                                 // Small delay before retrying
                                 sleep(500, 1000);
+                            }
+                        }
+                        
+                        // After the looting loop, check if we exited due to brother spawn
+                        if (!chestLooted) {
+                            boolean hasBrother = false;
+                            try {
+                                hasBrother = (Microbot.getClient().getHintArrowNpc() != null);
+                            } catch (Exception e) {
+                                // No hint arrow
+                            }
+                            
+                            if (hasBrother) {
+                                Microbot.log("Handling spawned brother before attempting to loot again");
+                                checkForBrother(config);
+                                // The chest interaction will be retried in the next main loop iteration
                             }
                         }
                         
@@ -1555,6 +1600,9 @@ public class BarrowsScript extends Script {
                         
                         if(currentRP >= targetRP){
                             Microbot.log("Breaking out we have enough RP (" + currentRP + "/" + targetRP + ")");
+                            if (!Rs2Player.isMoving()) {
+                                startWalkingToTheChest();
+                            }
                             break;
                         }
 
@@ -1851,7 +1899,7 @@ public class BarrowsScript extends Script {
         if(currentBrother != null && !currentBrother.getName().contains("Dharok") && currentBrother.getHealthPercentage() < Rs2Random.between(35,42)) skipThePot = true;
 
         if(!skipThePot) {
-            if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(5, 12)) {
+            if (Rs2Player.getBoostedSkillLevel(Skill.PRAYER) <= Rs2Random.between(3, 8)) {
                 if (Rs2Inventory.contains(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) {
                     Rs2ItemModel prayerpotion = Rs2Inventory.get(it -> it != null && it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"));
                     String action = "Drink";
