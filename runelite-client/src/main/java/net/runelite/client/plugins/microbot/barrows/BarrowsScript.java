@@ -7,6 +7,7 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.pluginscheduler.model.PluginScheduleEntry;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
+import net.runelite.client.plugins.microbot.inventorysetups.InventorySetupsItem;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
@@ -712,7 +713,7 @@ public class BarrowsScript extends Script {
                             // Now leave - always teleport to Ferox if we need to bank
                             if(shouldBank) {
                             // Need to bank - ALWAYS teleport to Ferox using Ring of Dueling
-                            if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                            if(teleportToFerox()){
                                 Microbot.log("Teleporting to bank.");
                                 sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
                                 sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
@@ -736,7 +737,7 @@ public class BarrowsScript extends Script {
                                 // This should never execute because Walker always banks after chest
                                 // But keep it as a safety fallback
                                 Microbot.log("WARNING: Walker method without banking - this shouldn't happen");
-                                if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                if(teleportToFerox()){
                                     Microbot.log("Teleporting to Ferox anyway");
                                     sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
                                     sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
@@ -963,7 +964,7 @@ public class BarrowsScript extends Script {
                             // Now leave - always teleport to Ferox if we need to bank
                             if(shouldBank) {
                                 // Need to bank - ALWAYS teleport to Ferox using Ring of Dueling
-                                if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                if(teleportToFerox()){
                                     Microbot.log("Looted chest, teleporting to bank.");
                                     sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
                                     sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
@@ -987,7 +988,7 @@ public class BarrowsScript extends Script {
                                     // This should never execute because Walker always banks after chest
                                     // But keep it as a safety fallback
                                     Microbot.log("WARNING: Walker method without banking - this shouldn't happen");
-                                    if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+                                    if(teleportToFerox()){
                                         Microbot.log("Teleporting to Ferox anyway");
                                         sleepUntil(() -> Rs2Player.isAnimating(), Rs2Random.between(2000, 4000));
                                         sleepUntil(() -> !Rs2Player.isAnimating(), Rs2Random.between(6000, 10000));
@@ -1056,13 +1057,22 @@ public class BarrowsScript extends Script {
                         // Wait a bit for inventory to load
                         sleep(1000, 2000);
                         
-                        // Ensure we have a ring of dueling equipped
-                        if(Rs2Equipment.get(EquipmentInventorySlot.RING) == null || !Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling")) {
+                        // Ensure we have a ring of dueling (in inventory or equipped based on setup)
+                        if(!hasRingOfDueling()) {
                             if(Rs2Bank.count(ItemID.RING_OF_DUELING8) > 0) {
-                                Rs2Bank.withdrawAndEquip(ItemID.RING_OF_DUELING8);
-                                sleepUntil(() -> Rs2Equipment.get(EquipmentInventorySlot.RING) != null && 
-                                         Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling"), 
-                                         Rs2Random.between(3000, 5000));
+                                if(shouldRingBeInInventory()) {
+                                    // Withdraw to inventory
+                                    Microbot.log("Withdrawing Ring of Dueling to inventory (per inventory setup)");
+                                    Rs2Bank.withdrawX(ItemID.RING_OF_DUELING8, 1);
+                                    sleepUntil(() -> Rs2Inventory.contains(ItemID.RING_OF_DUELING8), 
+                                             Rs2Random.between(3000, 5000));
+                                } else {
+                                    // Withdraw and equip as before
+                                    Rs2Bank.withdrawAndEquip(ItemID.RING_OF_DUELING8);
+                                    sleepUntil(() -> Rs2Equipment.get(EquipmentInventorySlot.RING) != null && 
+                                             Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling"), 
+                                             Rs2Random.between(3000, 5000));
+                                }
                             } else {
                                 Microbot.log("Out of rings of dueling");
                                 super.shutdown();
@@ -1202,7 +1212,7 @@ public class BarrowsScript extends Script {
 
                         howtoBank = Rs2Random.between(0,100);
                         if(howtoBank <= 40){
-                            if(Rs2Equipment.get(EquipmentInventorySlot.RING)!=null){
+                            if(hasRingOfDueling()){
                                 // we have our ring do nothing
                             } else {
                                 Microbot.log("Getting the ring of dueling");
@@ -1216,9 +1226,14 @@ public class BarrowsScript extends Script {
                                     Microbot.log("Out of rings of dueling");
                                     super.shutdown();
                                 }
+                                // Only equip if inventory setup doesn't have it in inventory
                                 if(Rs2Inventory.contains(ItemID.RING_OF_DUELING8)){
-                                    if(Rs2Inventory.interact(ItemID.RING_OF_DUELING8, "Wear")){
-                                        sleepUntil(()-> Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling"), Rs2Random.between(5000,15000));
+                                    if(shouldRingBeInInventory()) {
+                                        Microbot.log("Keeping Ring of Dueling in inventory per setup");
+                                    } else {
+                                        if(Rs2Inventory.interact(ItemID.RING_OF_DUELING8, "Wear")){
+                                            sleepUntil(()-> Rs2Equipment.get(EquipmentInventorySlot.RING).getName().contains("dueling"), Rs2Random.between(5000,15000));
+                                        }
                                     }
                                 }
                             }
@@ -1627,15 +1642,15 @@ public class BarrowsScript extends Script {
         boolean needsTeleportItem = !config.selectedToBarrowsTPMethod().name().equals("Walker");
         
         if(!usingPoweredStaffs) {
-            if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null || !Rs2Inventory.contains("Spade") ||
+            if (!hasRingOfDueling() || !Rs2Inventory.contains("Spade") ||
                     Rs2Inventory.count(config.food().getName()) < 2 || 
                     (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
                     Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
                     !Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) ||
                     Rs2Inventory.get(neededRune) == null || Rs2Inventory.get(neededRune).getQuantity() <= minRuneAmt || Rs2Player.getRunEnergy() <= 5) {
                 Microbot.log("We need to bank.");
-                if (Rs2Equipment.get(EquipmentInventorySlot.RING) == null) {
-                    Microbot.log("We don't have a ring of dueling equipped.");
+                if (!hasRingOfDueling()) {
+                    Microbot.log("We don't have a ring of dueling.");
                 }
                 if (!Rs2Inventory.contains("Spade")) {
                     Microbot.log("We don't have a spade.");
@@ -1664,15 +1679,15 @@ public class BarrowsScript extends Script {
             }
         }
         if(usingPoweredStaffs){
-            if(Rs2Equipment.get(EquipmentInventorySlot.RING)==null || !Rs2Inventory.contains("Spade") ||
+            if(!hasRingOfDueling() || !Rs2Inventory.contains("Spade") ||
                     Rs2Inventory.count(config.food().getName())<2 || 
                     (needsTeleportItem && Rs2Inventory.get(config.selectedToBarrowsTPMethod().getToBarrowsTPMethodItemID()) == null) ||
                     Rs2Inventory.count(it->it!=null&&it.getName().contains("Forgotten brew(")) < minForgottenBrews ||
                     !Rs2Inventory.contains(it -> it != null && (it.getName().contains("Prayer potion") || it.getName().contains("moth mix") || it.getName().contains("Moonlight moth"))) || outOfPoweredStaffCharges
                     || Rs2Player.getRunEnergy() <= 5){
                 Microbot.log("We need to bank.");
-                if(Rs2Equipment.get(EquipmentInventorySlot.RING)==null){
-                    Microbot.log("We don't have a ring of dueling equipped.");
+                if(!hasRingOfDueling()){
+                    Microbot.log("We don't have a ring of dueling.");
                 }
                 if(!Rs2Inventory.contains("Spade")){
                     Microbot.log("We don't have a spade.");
@@ -1831,7 +1846,7 @@ public class BarrowsScript extends Script {
         suppliesCheck(config);
         // Needed because the walker won't teleport to the enclave while in the tunnels or in a barrow
         if(shouldBank && (inTunnels || Rs2Player.getWorldLocation().getPlane() == 3)){
-            if(Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave")){
+            if(teleportToFerox()){
                 Microbot.log("We're out of supplies. Teleporting.");
                 if(inTunnels){
                     inTunnels=false;
@@ -2403,6 +2418,77 @@ public class BarrowsScript extends Script {
         public Rs2WorldArea getHumpWP() { return humpWP; }
         public Rs2PrayerEnum getWhatToPray() { return whatToPray; }
 
+    }
+
+    /**
+     * Check if Ring of Dueling should be kept in inventory based on inventory setup
+     * @return true if ring should be in inventory, false if it should be equipped
+     */
+    private boolean shouldRingBeInInventory() {
+        if (config == null || config.inventorySetup() == null) {
+            return false;
+        }
+        
+        var inventorySetup = new Rs2InventorySetup(config.inventorySetup().getName(), mainScheduledFuture);
+        List<InventorySetupsItem> inventoryItems = inventorySetup.getInventoryItems();
+        
+        // Check if any inventory item is a Ring of Dueling
+        for (InventorySetupsItem item : inventoryItems) {
+            if (item.getName() != null && item.getName().toLowerCase().contains("dueling")) {
+                Microbot.log("Inventory setup has Ring of Dueling in inventory - will keep it there");
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Teleport to Ferox Enclave using Ring of Dueling from either inventory or equipment
+     * @return true if teleport was initiated successfully
+     */
+    private boolean teleportToFerox() {
+        // First check inventory for Ring of Dueling
+        if (Rs2Inventory.contains(item -> item != null && item.getName() != null && 
+                item.getName().toLowerCase().contains("dueling"))) {
+            Microbot.log("Using Ring of Dueling from inventory to teleport to Ferox");
+            // Try to interact with any Ring of Dueling variant in inventory
+            Rs2ItemModel ring = Rs2Inventory.get(item -> item != null && item.getName() != null && 
+                    item.getName().toLowerCase().contains("dueling"));
+            if (ring != null) {
+                return Rs2Inventory.interact(ring, "Ferox Enclave");
+            }
+        }
+        
+        // If not in inventory, check equipment
+        if (Rs2Equipment.get(EquipmentInventorySlot.RING) != null && 
+                Rs2Equipment.get(EquipmentInventorySlot.RING).getName().toLowerCase().contains("dueling")) {
+            Microbot.log("Using equipped Ring of Dueling to teleport to Ferox");
+            return Rs2Equipment.interact(EquipmentInventorySlot.RING, "Ferox Enclave");
+        }
+        
+        Microbot.log("No Ring of Dueling found in inventory or equipment!");
+        return false;
+    }
+    
+    /**
+     * Check if we have a Ring of Dueling available (either in inventory or equipped)
+     * @return true if ring is available
+     */
+    private boolean hasRingOfDueling() {
+        // Check inventory
+        if (Rs2Inventory.contains(item -> item != null && item.getName() != null && 
+                item.getName().toLowerCase().contains("dueling"))) {
+            return true;
+        }
+        
+        // Check equipment
+        if (Rs2Equipment.get(EquipmentInventorySlot.RING) != null && 
+                Rs2Equipment.get(EquipmentInventorySlot.RING).getName().toLowerCase().contains("dueling")) {
+            return true;
+        }
+        
+        return false;
     }
 
     @Override
