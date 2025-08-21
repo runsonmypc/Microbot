@@ -1607,6 +1607,11 @@ public class BarrowsScript extends Script {
                         }
 
                     }
+                    
+                    // After combat ends, immediately resume walking to chest if we're not already moving
+                    if (!Rs2Player.isMoving() && !Rs2Player.isInCombat()) {
+                        startWalkingToTheChest();
+                    }
                 }
             }
         }
