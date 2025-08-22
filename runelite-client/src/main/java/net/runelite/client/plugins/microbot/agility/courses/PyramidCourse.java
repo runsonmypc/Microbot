@@ -734,18 +734,22 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             int distanceToStart = playerLocation.distanceTo(START_POINT);
             if (distanceToStart > 3) {
-                // Try to directly click on the pyramid stairs if visible
+                // Try to directly click on the pyramid stairs if visible AND reachable
                 TileObject pyramidStairs = Rs2GameObject.findObjectByIdAndDistance(10857, 10);
-                if (pyramidStairs != null && pyramidStairs.getWorldLocation().distanceTo(START_POINT) <= 2) {
-                    debugLog("Clicking directly on pyramid stairs (distance: " + distanceToStart + ")");
+                if (pyramidStairs != null && 
+                    pyramidStairs.getWorldLocation().distanceTo(START_POINT) <= 2 &&
+                    Rs2GameObject.canReach(pyramidStairs.getWorldLocation())) {
+                    // We're close and can reach it (e.g., coming from pyramid exit) - click directly
+                    debugLog("Clicking directly on pyramid stairs (reachable from current position)");
                     if (Rs2GameObject.interact(pyramidStairs)) {
                         Global.sleep(600, 800); // Small delay after clicking
                         return true;
                     }
                 }
                 
-                // Fall back to walking if stairs not found or interaction failed
-                debugLog("Walking to pyramid start point (distance: " + distanceToStart + ")");
+                // Can't reach stairs directly (e.g., coming from Simon with climbing rocks in the way)
+                // Use Rs2Walker to navigate around obstacles
+                debugLog("Walking to pyramid start point - stairs not reachable directly (distance: " + distanceToStart + ")");
                 Rs2Walker.walkTo(START_POINT, 2);
                 return true;
             }
