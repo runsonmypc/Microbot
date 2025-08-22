@@ -91,12 +91,19 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         debugLog("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
         
-        // Check if inventory is full AND we're on ground level (not inside pyramid)
-        if (Rs2Inventory.isFull() && playerPos.getPlane() == 0) {
-            if (Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
-                // Inventory is full and has pyramid tops - handle turn-in
+        // Check if we should turn in pyramids (either inventory full OR reached random threshold) AND we're on ground level
+        int pyramidCount = Rs2Inventory.count(ItemID.PYRAMID_TOP);
+        boolean shouldTurnIn = (Rs2Inventory.isFull() || pyramidCount >= state.getPyramidTurnInThreshold()) && playerPos.getPlane() == 0;
+        
+        if (shouldTurnIn) {
+            if (pyramidCount > 0) {
+                // We have pyramid tops - handle turn-in
                 if (!state.isHandlingPyramidTurnIn()) {
-                    debugLog("Inventory is full with pyramid tops and on ground level - going to Simon Templeton");
+                    if (Rs2Inventory.isFull()) {
+                        debugLog("Inventory is full with " + pyramidCount + " pyramid tops - going to Simon Templeton");
+                    } else {
+                        debugLog("Reached threshold of " + state.getPyramidTurnInThreshold() + " pyramids (have " + pyramidCount + ") - going to Simon Templeton");
+                    }
                     state.startPyramidTurnIn();
                 }
                 
@@ -104,14 +111,14 @@ public class PyramidCourse implements AgilityCourseHandler {
                 if (handlePyramidTurnIn()) {
                     return null; // Return null to prevent obstacle interaction
                 }
-            } else {
+            } else if (Rs2Inventory.isFull()) {
                 // Inventory is full but no pyramid tops - stop and warn
                 Microbot.showMessage("Inventory is full but no pyramid tops found! Clear inventory to continue.");
                 Microbot.log("WARNING: Inventory full without pyramid tops - stopping");
                 return null;
             }
-        } else if (!Rs2Inventory.isFull()) {
-            // Reset turn-in flag when inventory is not full
+        } else if (!Rs2Inventory.isFull() && pyramidCount < state.getPyramidTurnInThreshold()) {
+            // Reset turn-in flag when neither condition is met
             state.clearPyramidTurnIn();
         }
         
@@ -722,9 +729,16 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Only walk to start if on ground level
         if (playerLocation.getPlane() == 0) {
             // Check if we should handle pyramid turn-in instead of walking to start
-            if (Rs2Inventory.isFull() && Rs2Inventory.contains(ItemID.PYRAMID_TOP)) {
+            int pyramidCount = Rs2Inventory.count(ItemID.PYRAMID_TOP);
+            boolean shouldTurnIn = pyramidCount > 0 && (Rs2Inventory.isFull() || pyramidCount >= state.getPyramidTurnInThreshold());
+            
+            if (shouldTurnIn) {
                 if (!state.isHandlingPyramidTurnIn()) {
-                    debugLog("Inventory is full with pyramid tops - going to Simon instead of pyramid start");
+                    if (Rs2Inventory.isFull()) {
+                        debugLog("Inventory is full with " + pyramidCount + " pyramid tops - going to Simon instead of pyramid start");
+                    } else {
+                        debugLog("Reached threshold of " + state.getPyramidTurnInThreshold() + " pyramids (have " + pyramidCount + ") - going to Simon instead of pyramid start");
+                    }
                     state.startPyramidTurnIn();
                 }
                 // Handle turn-in instead of walking to start

@@ -1,5 +1,7 @@
 package net.runelite.client.plugins.microbot.agility.courses;
 
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+
 /**
  * Encapsulates state tracking for the Agility Pyramid course.
  * Centralizes all state management to avoid scattered static variables.
@@ -15,6 +17,9 @@ public class PyramidState {
     private boolean currentlyDoingCrossGap = false;
     private boolean currentlyDoingXpObstacle = false;
     private boolean handlingPyramidTurnIn = false;
+    
+    // Random turn-in threshold (4-6 pyramids)
+    private int pyramidTurnInThreshold = generateNewThreshold();
     
     // Cooldown constants
     private static final long OBSTACLE_COOLDOWN = 1500; // 1.5 seconds between obstacles
@@ -107,10 +112,12 @@ public class PyramidState {
     }
     
     /**
-     * Clears the pyramid turn-in flag
+     * Clears the pyramid turn-in flag and generates a new random threshold
      */
     public void clearPyramidTurnIn() {
         handlingPyramidTurnIn = false;
+        // Generate a new random threshold for next turn-in
+        pyramidTurnInThreshold = generateNewThreshold();
     }
     
     /**
@@ -118,6 +125,20 @@ public class PyramidState {
      */
     public boolean isHandlingPyramidTurnIn() {
         return handlingPyramidTurnIn;
+    }
+    
+    /**
+     * Gets the current pyramid turn-in threshold
+     */
+    public int getPyramidTurnInThreshold() {
+        return pyramidTurnInThreshold;
+    }
+    
+    /**
+     * Generates a new random threshold between 4 and 6 (inclusive)
+     */
+    private int generateNewThreshold() {
+        return Rs2Random.betweenInclusive(4, 6);
     }
     
     /**
@@ -130,5 +151,6 @@ public class PyramidState {
         currentlyDoingCrossGap = false;
         currentlyDoingXpObstacle = false;
         handlingPyramidTurnIn = false;
+        pyramidTurnInThreshold = generateNewThreshold();
     }
 }
