@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.microbot.agility.courses;
 
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Encapsulates state tracking for the Agility Pyramid course.
@@ -11,12 +12,11 @@ public class PyramidState {
     // Timing and cooldown tracking
     private long lastObstacleStartTime = 0;
     private long lastClimbingRocksTime = 0;
-    private long lastCrossGapTime = 0;
     
-    // State flags  
-    private boolean currentlyDoingCrossGap = false;
-    private boolean currentlyDoingXpObstacle = false;
-    private boolean handlingPyramidTurnIn = false;
+    // State flags - using AtomicBoolean for thread safety
+    private final AtomicBoolean currentlyDoingCrossGap = new AtomicBoolean(false);
+    private final AtomicBoolean currentlyDoingXpObstacle = new AtomicBoolean(false);
+    private final AtomicBoolean handlingPyramidTurnIn = new AtomicBoolean(false);
     
     // Random turn-in threshold (4-6 pyramids)
     private int pyramidTurnInThreshold = generateNewThreshold();
@@ -24,7 +24,6 @@ public class PyramidState {
     // Cooldown constants
     private static final long OBSTACLE_COOLDOWN = 1500; // 1.5 seconds between obstacles
     private static final long CLIMBING_ROCKS_COOLDOWN = 30000; // 30 seconds - pyramid respawn time
-    private static final long CROSS_GAP_COOLDOWN = 6000; // 6 seconds for Cross Gap
     
     /**
      * Records that an obstacle was just started
@@ -41,10 +40,12 @@ public class PyramidState {
     }
     
     /**
-     * Records that climbing rocks were clicked
+     * Records that climbing rocks were clicked and generates new random threshold
      */
     public void recordClimbingRocks() {
         lastClimbingRocksTime = System.currentTimeMillis();
+        // Generate a new random threshold for the next pyramid run
+        pyramidTurnInThreshold = generateNewThreshold();
     }
     
     /**
@@ -55,76 +56,67 @@ public class PyramidState {
     }
     
     /**
-     * Records that a Cross Gap obstacle was started
+     * Sets the Cross Gap flag (for long-animation gap obstacles)
      */
     public void startCrossGap() {
-        lastCrossGapTime = System.currentTimeMillis();
-        currentlyDoingCrossGap = true;
-    }
-    
-    /**
-     * Checks if Cross Gap is on cooldown
-     */
-    public boolean isCrossGapCooldownActive() {
-        return System.currentTimeMillis() - lastCrossGapTime < CROSS_GAP_COOLDOWN;
+        currentlyDoingCrossGap.set(true);
     }
     
     /**
      * Clears the Cross Gap flag
      */
     public void clearCrossGap() {
-        currentlyDoingCrossGap = false;
+        currentlyDoingCrossGap.set(false);
     }
     
     /**
      * Checks if currently doing a Cross Gap obstacle
      */
     public boolean isDoingCrossGap() {
-        return currentlyDoingCrossGap;
+        return currentlyDoingCrossGap.get();
     }
     
     /**
      * Sets the XP obstacle flag
      */
     public void startXpObstacle() {
-        currentlyDoingXpObstacle = true;
+        currentlyDoingXpObstacle.set(true);
     }
     
     /**
      * Clears the XP obstacle flag
      */
     public void clearXpObstacle() {
-        currentlyDoingXpObstacle = false;
+        currentlyDoingXpObstacle.set(false);
     }
     
     /**
      * Checks if currently doing an XP-granting obstacle
      */
     public boolean isDoingXpObstacle() {
-        return currentlyDoingXpObstacle;
+        return currentlyDoingXpObstacle.get();
     }
     
     /**
      * Sets the pyramid turn-in flag
      */
     public void startPyramidTurnIn() {
-        handlingPyramidTurnIn = true;
+        handlingPyramidTurnIn.set(true);
     }
     
     /**
-     * Clears the pyramid turn-in flag and generates a new random threshold
+     * Clears the pyramid turn-in flag
      */
     public void clearPyramidTurnIn() {
-        handlingPyramidTurnIn = false;
-        // Generate a new random threshold for next turn-in
-        pyramidTurnInThreshold = generateNewThreshold();
+        handlingPyramidTurnIn.set(false);
+        // Threshold is now generated when grabbing pyramid top, not after turn-in
     }
     
     /**
      * Checks if currently handling pyramid turn-in
      */
     public boolean isHandlingPyramidTurnIn() {
-        return handlingPyramidTurnIn;
+        return handlingPyramidTurnIn.get();
     }
     
     /**
@@ -147,10 +139,9 @@ public class PyramidState {
     public void reset() {
         lastObstacleStartTime = 0;
         lastClimbingRocksTime = 0;
-        lastCrossGapTime = 0;
-        currentlyDoingCrossGap = false;
-        currentlyDoingXpObstacle = false;
-        handlingPyramidTurnIn = false;
+        currentlyDoingCrossGap.set(false);
+        currentlyDoingXpObstacle.set(false);
+        handlingPyramidTurnIn.set(false);
         pyramidTurnInThreshold = generateNewThreshold();
     }
 }
