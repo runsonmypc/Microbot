@@ -46,13 +46,6 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
     }
     
-    /**
-     * Info logging - always prints for important state tracking
-     */
-    private static void infoLog(String message) {
-        Microbot.log(message);
-    }
-    
     // Define the strict obstacle sequence to prevent skipping ahead
     private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
         10884, // Gap Cross 1
@@ -97,7 +90,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         WorldPoint playerPos = Rs2Player.getWorldLocation();
         
         debugLog("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
-        infoLog("FLAG STATES: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + state.isDoingXpObstacle() + ", PyramidTurnIn=" + state.isHandlingPyramidTurnIn());
+        debugLog("FLAG STATES: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + state.isDoingXpObstacle() + ", PyramidTurnIn=" + state.isHandlingPyramidTurnIn());
         
         // Check if we should turn in pyramids (either inventory full OR reached random threshold) AND we're on ground level
         int pyramidCount = Rs2Inventory.count(ItemID.PYRAMID_TOP);
@@ -144,7 +137,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         // Special blocking for Cross Gap obstacles - don't return any obstacle while doing Cross Gap
         if (state.isDoingCrossGap()) {
-            infoLog("Cross Gap flag is SET - blocking all obstacle selection");
+            debugLog("Cross Gap flag is SET - blocking all obstacle selection");
             return null;
         }
         
@@ -282,7 +275,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 currentArea.obstacleId == 10882) { // Gap (floor 1) also has long animation
                 // Cross gap time is tracked in startCrossGap
                 state.startCrossGap(); // Set flag that we're doing Cross Gap-type obstacle
-                infoLog("Detected long-animation gap obstacle (ID: " + currentArea.obstacleId + ") - setting flag to block all other obstacles");
+                debugLog("Detected long-animation gap obstacle (ID: " + currentArea.obstacleId + ") - setting flag to block all other obstacles");
             }
             
             // Track any XP-granting obstacle (gaps, planks, ledges, low walls)
@@ -837,7 +830,7 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 // Check if this is a stone block (12 XP)
                 if (xpGained == 12) {
-                    infoLog("Hit by stone block (12 XP) - clearing flags to allow immediate retry");
+                    debugLog("Hit by stone block (12 XP) - clearing flags to allow immediate retry");
                     hitByStoneBlock = true;
                     lastKnownXp = currentXp;
                     
@@ -946,13 +939,13 @@ public class PyramidCourse implements AgilityCourseHandler {
                         }
                         // After 4 seconds without XP, check if we at least moved
                         if (distanceMoved >= 3) {
-                            infoLog("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
-                            infoLog("Cross Gap flag state before returning: " + state.isDoingCrossGap());
-                            infoLog("XP obstacle flag state before returning: " + state.isDoingXpObstacle());
+                            debugLog("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
+                            debugLog("Cross Gap flag state before returning: " + state.isDoingCrossGap());
+                            debugLog("XP obstacle flag state before returning: " + state.isDoingXpObstacle());
                             // Clear XP obstacle flag but NOT Cross Gap flag
                             // Cross Gap needs to wait for XP regardless of movement
                             state.clearXpObstacle();
-                            infoLog("After clearing XP flag - Cross Gap: " + state.isDoingCrossGap() + ", XP obstacle: " + state.isDoingXpObstacle());
+                            debugLog("After clearing XP flag - Cross Gap: " + state.isDoingCrossGap() + ", XP obstacle: " + state.isDoingXpObstacle());
                             return true;
                         }
                     }
