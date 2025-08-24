@@ -62,11 +62,14 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
 import javax.annotation.Nonnull;
@@ -217,11 +220,48 @@ public class ClientUI
 		this.clientThreadProvider = clientThreadProvider;
 		this.eventBus = eventBus;
 		this.safeMode = safeMode;
-		this.title = title + (safeMode ? " (safe mode)" : " V" + version) + 
-             		(proxyMessage.contains(":") ? " " + proxyMessage.split(":")[0] + ":" + proxyMessage.split(":")[1] : "");
+		this.title = buildWindowTitle(title, version, safeMode);
 
 		normalBoundsTimer = new Timer(250, _ev -> setLastNormalBounds());
 		normalBoundsTimer.setRepeats(false);
+	}
+
+	private String buildWindowTitle(String baseTitle, String version, boolean safeMode)
+	{
+		if (safeMode) {
+			return baseTitle + " (safe mode)";
+		}
+		
+		String title = baseTitle + " V" + version;
+		
+		String currentBranch = getCurrentGitBranch();
+		if (currentBranch != null && !Set.of("main").contains(currentBranch)) {
+			title += " - " + currentBranch;
+		}
+		
+		if (proxyMessage.contains(":")) {
+			String[] parts = proxyMessage.split(":");
+			title += " " + parts[0] + ":" + parts[1];
+		}
+		
+		return title;
+	}
+	
+	private String getCurrentGitBranch()
+	{
+		try {
+			Process process = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD")
+				.redirectErrorStream(true)
+				.start();
+			
+			try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+				String branch = reader.readLine();
+				return process.waitFor() == 0 && branch != null && !branch.trim().isEmpty() ? branch.trim() : null;
+			}
+		} catch (Exception e) {
+			// Silently fail - when git is not available
+		}
+		return null;
 	}
 
 	@Subscribe
