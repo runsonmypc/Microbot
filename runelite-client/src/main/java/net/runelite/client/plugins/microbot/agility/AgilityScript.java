@@ -97,16 +97,6 @@ public class AgilityScript extends Script
 					return;
 				}
 
-				// Always check for movement/animation before clicking obstacles
-				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
-				{
-					return;
-				}
-				
-				// Small delay after stopping to ensure animations are fully complete
-				sleep(300, 400);
-				
-				// CRITICAL: Re-check after the delay - player might have started moving again
 				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
 				{
 					return;
