@@ -5,6 +5,7 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigInformation;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 import net.runelite.client.plugins.microbot.agility.enums.AgilityCourse;
 
 @ConfigGroup("MicroAgility")
@@ -109,6 +110,7 @@ public interface MicroAgilityConfig extends Config
 		position = 8,
 		section = generalSection
 	)
+	@Range(min = 0, max = 100)
 	default int alchSkipChance()
 	{
 		return 5;
