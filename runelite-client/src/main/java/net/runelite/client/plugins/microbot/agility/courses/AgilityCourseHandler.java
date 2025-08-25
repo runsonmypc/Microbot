@@ -95,25 +95,28 @@ public interface AgilityCourseHandler
 		double initialHealth = Rs2Player.getHealthPercentage();
 		int timeoutMs = 15000;
 		long startTime = System.currentTimeMillis();
+		long lastMovingTime = System.currentTimeMillis();
+		int waitDelay = 1000; // Default 1 second wait after movement stops
 		
 		// Check every 100ms for completion
 		while (System.currentTimeMillis() - startTime < timeoutMs)
 		{
-			// Check if we gained XP
-			if (Microbot.getClient().getSkillExperience(Skill.AGILITY) != agilityExp)
+			// Update last moving time if player is still moving/animating
+			if (Rs2Player.isMoving() || Rs2Player.isAnimating())
 			{
-				// XP gained! Check if we're still animating
-				if (Rs2Player.isAnimating() || Rs2Player.isMoving())
-				{
-					// We got XP while still animating - this is the early detection!
-					// Return true but the caller can check animation state
-					return true;
-				}
-				// Got XP and not animating
+				lastMovingTime = System.currentTimeMillis();
+			}
+			
+			// Get current XP
+			int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+			
+			// Use the isObstacleComplete hook for course-specific completion logic
+			if (isObstacleComplete(currentXp, agilityExp, lastMovingTime, waitDelay))
+			{
 				return true;
 			}
 			
-			// Check other completion conditions
+			// Check other completion conditions (health loss, plane change)
 			if (Rs2Player.getHealthPercentage() < initialHealth || 
 				Microbot.getClient().getTopLevelWorldView().getPlane() != plane)
 			{

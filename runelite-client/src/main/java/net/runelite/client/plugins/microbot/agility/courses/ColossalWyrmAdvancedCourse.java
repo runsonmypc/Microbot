@@ -1,9 +1,12 @@
 package net.runelite.client.plugins.microbot.agility.courses;
 
 import java.util.List;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.ObjectID;
+import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.agility.models.AgilityObstacleModel;
+import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.misc.Operation;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 
@@ -39,6 +42,48 @@ public class ColossalWyrmAdvancedCourse implements AgilityCourseHandler
 		// Colossal Wyrm courses have multi-XP drop obstacles
 		// Don't allow early clicking based on XP - wait for animation to finish
 		return !Rs2Player.isMoving() && !Rs2Player.isAnimating();
+	}
+	
+	@Override
+	public boolean waitForCompletion(final int agilityExp, final int plane)
+	{
+		double initialHealth = Rs2Player.getHealthPercentage();
+		int timeoutMs = 15000;
+		long startTime = System.currentTimeMillis();
+		long lastMovingTime = System.currentTimeMillis();
+		int waitDelay = 2000; // Colossal Wyrm needs longer wait after movement stops
+		
+		// Check every 100ms for completion
+		while (System.currentTimeMillis() - startTime < timeoutMs)
+		{
+			// Update last moving time if player is still moving/animating
+			if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+			{
+				lastMovingTime = System.currentTimeMillis();
+			}
+			
+			// Get current XP
+			int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+			
+			// Use our custom completion logic that ignores XP
+			if (isObstacleComplete(currentXp, agilityExp, lastMovingTime, waitDelay))
+			{
+				return true;
+			}
+			
+			// Check other completion conditions (health loss, plane change)
+			if (Rs2Player.getHealthPercentage() < initialHealth || 
+				Microbot.getClient().getTopLevelWorldView().getPlane() != plane)
+			{
+				return true;
+			}
+			
+			// Sleep before next check
+			Global.sleep(100);
+		}
+		
+		// Timeout reached
+		return false;
 	}
 	
 	@Override
