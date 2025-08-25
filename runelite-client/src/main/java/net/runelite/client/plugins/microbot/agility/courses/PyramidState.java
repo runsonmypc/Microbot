@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.microbot.agility.courses;
 
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -21,29 +22,29 @@ public class PyramidState {
     // Random turn-in threshold (4-6 pyramids)
     private volatile int pyramidTurnInThreshold = generateNewThreshold();
     
-    // Cooldown constants
-    private static final long OBSTACLE_COOLDOWN = 1500; // 1.5 seconds between obstacles
-    private static final long CLIMBING_ROCKS_COOLDOWN = 30000; // 30 seconds - pyramid respawn time
+    // Cooldown constants (in nanoseconds for precise timing)
+    private static final long OBSTACLE_COOLDOWN = TimeUnit.MILLISECONDS.toNanos(1500); // 1.5 seconds between obstacles
+    private static final long CLIMBING_ROCKS_COOLDOWN = TimeUnit.MILLISECONDS.toNanos(30000); // 30 seconds - pyramid respawn time
     
     /**
      * Records that an obstacle was just started
      */
     public void recordObstacleStart() {
-        lastObstacleStartTime = System.currentTimeMillis();
+        lastObstacleStartTime = System.nanoTime();
     }
     
     /**
      * Checks if enough time has passed since last obstacle
      */
     public boolean isObstacleCooldownActive() {
-        return System.currentTimeMillis() - lastObstacleStartTime < OBSTACLE_COOLDOWN;
+        return System.nanoTime() - lastObstacleStartTime < OBSTACLE_COOLDOWN;
     }
     
     /**
      * Records that climbing rocks were clicked and generates new random threshold
      */
     public void recordClimbingRocks() {
-        lastClimbingRocksTime = System.currentTimeMillis();
+        lastClimbingRocksTime = System.nanoTime();
         // Generate a new random threshold for the next pyramid run
         pyramidTurnInThreshold = generateNewThreshold();
     }
@@ -52,7 +53,7 @@ public class PyramidState {
      * Checks if climbing rocks are on cooldown
      */
     public boolean isClimbingRocksCooldownActive() {
-        return System.currentTimeMillis() - lastClimbingRocksTime < CLIMBING_ROCKS_COOLDOWN;
+        return System.nanoTime() - lastClimbingRocksTime < CLIMBING_ROCKS_COOLDOWN;
     }
     
     /**
