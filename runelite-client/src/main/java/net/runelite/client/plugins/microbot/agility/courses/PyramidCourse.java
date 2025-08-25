@@ -34,7 +34,7 @@ public class PyramidCourse implements AgilityCourseHandler {
     private static final int PYRAMID_TOP_REGION = 12105;
     
     // Centralized state tracking
-    private static final PyramidState state = new PyramidState();
+    private final PyramidState state = new PyramidState();
     
     // Define the strict obstacle sequence to prevent skipping ahead
     private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
@@ -138,11 +138,7 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Double-check movement after a brief moment - animations can have pauses
-        try {
-            Thread.sleep(50); // Very brief check
-        } catch (InterruptedException e) {
-            // Ignore
-        }
+        Global.sleep(35, 65); // Brief jittered delay
         
         // Recheck after the brief pause
         if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
