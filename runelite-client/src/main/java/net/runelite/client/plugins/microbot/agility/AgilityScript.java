@@ -39,8 +39,6 @@ public class AgilityScript extends Script
 
 	WorldPoint startPoint = null;
 	int lastAgilityXp = 0;
-	long lastMovingTime = 0;
-	int waitDelay = 0;  // Random delay between 700-1100ms
 
 	@Inject
 	public AgilityScript(MicroAgilityPlugin plugin, MicroAgilityConfig config)
@@ -102,30 +100,6 @@ public class AgilityScript extends Script
 					return;
 				}
 
-				// Check if we're still completing an obstacle
-				if (plugin.getCourseHandler().getCurrentObstacleIndex() > 0)
-				{
-					boolean obstacleComplete = plugin.getCourseHandler().isObstacleComplete(
-						currentAgilityXp, lastAgilityXp, lastMovingTime, waitDelay);
-					
-					if (obstacleComplete && currentAgilityXp > lastAgilityXp)
-					{
-						lastAgilityXp = currentAgilityXp;
-						// Small humanization delay after XP drop (100-300ms)
-						sleep(100, 300);
-					}
-					else if (!obstacleComplete)
-					{
-						// Update timing if still moving
-						if (Rs2Player.isMoving() || Rs2Player.isAnimating())
-						{
-							lastMovingTime = System.currentTimeMillis();
-							waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
-						}
-						return;
-					}
-				}
-
 				if (lootMarksOfGrace())
 				{
 					return;
@@ -149,6 +123,19 @@ public class AgilityScript extends Script
 				if (!Rs2Camera.isTileOnScreen(gameObject))
 				{
 					Rs2Walker.walkMiniMap(gameObject.getWorldLocation());
+				}
+
+				// Check if we should wait before clicking
+				if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
+					// We're still moving/animating from previous obstacle
+					// Check if we got XP (which signals we can click next)
+					if (currentAgilityXp > lastAgilityXp) {
+						// Got XP! Update and proceed to click
+						lastAgilityXp = currentAgilityXp;
+					} else {
+						// Still animating, no XP yet - don't click
+						return;
+					}
 				}
 
 				// Handle alchemy if enabled
@@ -196,12 +183,19 @@ public class AgilityScript extends Script
 				
 				// Normal obstacle interaction
 				if (Rs2GameObject.interact(gameObject)) {
+					// Wait for completion - this now returns quickly on XP drop
 					plugin.getCourseHandler().waitForCompletion(agilityExp, 
 						Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
-					Rs2Antiban.actionCooldown();
-					Rs2Antiban.takeMicroBreakByChance();
-					// Update last XP after completing obstacle
+					
+					// Update XP tracking
 					lastAgilityXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+					
+					// If we're still animating after XP, don't add delays - proceed immediately
+					if (!Rs2Player.isAnimating() && !Rs2Player.isMoving()) {
+						// Only add delays if we're not animating
+						Rs2Antiban.actionCooldown();
+						Rs2Antiban.takeMicroBreakByChance();
+					}
 				}
 			}
 			catch (Exception ex)
@@ -360,29 +354,7 @@ public class AgilityScript extends Script
 
 	private void performNormalAlch(String alchItem, int currentAgilityXp)
 	{
-		// At first obstacle, check if we're mid-obstacle or just returned from walking
-		if (plugin.getCourseHandler().getCurrentObstacleIndex() == 0)
-		{
-			// Skip alching if we're walking or recently finished walking (e.g., from Rs2Walker)
-			if (Rs2Player.isWalking())
-			{
-				return; // Don't alch while walking to start
-			}
-			
-			// Check if obstacle is still being completed
-			if (!plugin.getCourseHandler().isObstacleComplete(currentAgilityXp, lastAgilityXp, lastMovingTime, waitDelay))
-			{
-				// Update timing if still moving
-				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
-				{
-					lastMovingTime = System.currentTimeMillis();
-					waitDelay = 700 + (int)(Math.random() * 401);  // 700-1100ms
-				}
-				return; // Skip alching while mid-obstacle
-			}
-		}
-		
-		// Safe to alch
+		// Simple alch - waitForCompletion handles all timing
 		Rs2Magic.alch(alchItem, 50, 75);
 	}
 
