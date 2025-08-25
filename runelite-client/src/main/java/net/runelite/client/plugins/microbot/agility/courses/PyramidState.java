@@ -110,7 +110,7 @@ public class PyramidState {
      */
     public void clearPyramidTurnIn() {
         handlingPyramidTurnIn.set(false);
-        // Threshold is now generated when grabbing pyramid top, not after turn-in
+        // Threshold is regenerated when grabbing the pyramid top (recordClimbingRocks), not after turn-in
     }
     
     /**
@@ -125,6 +125,13 @@ public class PyramidState {
      */
     public int getPyramidTurnInThreshold() {
         return pyramidTurnInThreshold;
+    }
+    
+    /**
+     * Package-private setter for unit testing purposes to avoid randomness in tests
+     */
+    void setPyramidTurnInThresholdForTesting(int value) {
+        this.pyramidTurnInThreshold = value;
     }
     
     /**
