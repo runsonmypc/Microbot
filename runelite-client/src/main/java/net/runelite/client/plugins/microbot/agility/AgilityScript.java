@@ -97,9 +97,12 @@ public class AgilityScript extends Script
 					return;
 				}
 
-				if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+				if (plugin.getCourseHandler().getCurrentObstacleIndex() > 0)
 				{
-					return;
+					if (Rs2Player.isMoving() || Rs2Player.isAnimating())
+					{
+						return;
+					}
 				}
 
 				if (lootMarksOfGrace())
@@ -179,7 +182,7 @@ public class AgilityScript extends Script
 			{
 				Microbot.log("An error occurred: " + ex.getMessage(), ex);
 			}
-		}, 0, 600, TimeUnit.MILLISECONDS);
+		}, 0, 100, TimeUnit.MILLISECONDS);
 		return true;
 	}
 
