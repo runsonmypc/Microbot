@@ -70,6 +70,14 @@ public class PyramidCourse implements AgilityCourseHandler {
     public TileObject getCurrentObstacle() {
         WorldPoint playerPos = Rs2Player.getWorldLocation();
         
+        // Null check for player position (can happen during logout/disconnect)
+        if (playerPos == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Player position is null (likely during logout/disconnect) - returning null");
+            }
+            return null;
+        }
+        
         if (log.isDebugEnabled()) {
             log.debug("=== getCurrentObstacle called - Player at {} (plane: {}) ===", playerPos, playerPos.getPlane());
             log.debug("FLAG STATES: CrossGap={}, XpObstacle={}, PyramidTurnIn={}", 
