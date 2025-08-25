@@ -39,6 +39,7 @@ public class AgilityScript extends Script
 
 	WorldPoint startPoint = null;
 	int lastAgilityXp = 0;
+	long lastTimeoutWarning = 0;  // For throttled timeout warnings
 
 	@Inject
 	public AgilityScript(MicroAgilityPlugin plugin, MicroAgilityConfig config)
@@ -183,8 +184,18 @@ public class AgilityScript extends Script
 				// Normal obstacle interaction
 				if (Rs2GameObject.interact(gameObject)) {
 					// Wait for completion - this now returns quickly on XP drop
-					plugin.getCourseHandler().waitForCompletion(agilityExp, 
+					boolean completed = plugin.getCourseHandler().waitForCompletion(agilityExp, 
 						Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
+					
+					if (!completed) {
+						// Timeout occurred - log warning (throttled to once per 30 seconds)
+						long now = System.currentTimeMillis();
+						if (now - lastTimeoutWarning > 30000) {
+							Microbot.log("Obstacle completion timed out - retrying on next iteration");
+							lastTimeoutWarning = now;
+						}
+						return;  // Bail early to avoid acting on stale state
+					}
 					
 					// XP tracking is already updated before clicking (line 137)
 					// Don't update here to avoid losing early action state
@@ -340,8 +351,19 @@ public class AgilityScript extends Script
 				sleep(100, 200);
 				Rs2Magic.alch(alchItem, 50, 75);
 				Rs2GameObject.interact(gameObject);
-				plugin.getCourseHandler().waitForCompletion(agilityExp,
+				boolean completed = plugin.getCourseHandler().waitForCompletion(agilityExp,
 					Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
+				
+				if (!completed) {
+					// Timeout during efficient alching - log warning
+					long now = System.currentTimeMillis();
+					if (now - lastTimeoutWarning > 30000) {
+						Microbot.log("Obstacle completion timed out during efficient alching");
+						lastTimeoutWarning = now;
+					}
+					return false;  // Return false to indicate alch sequence failed
+				}
+				
 				Rs2Antiban.actionCooldown();
 				Rs2Antiban.takeMicroBreakByChance();
 				lastAgilityXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
