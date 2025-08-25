@@ -879,7 +879,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
-            int currentPlane = Microbot.getClient().getTopLevelWorldView().getPlane();
+            int currentPlane = Microbot.getClient().getTopLevelWorldView() != null
+                ? Microbot.getClient().getTopLevelWorldView().getPlane()
+                : Rs2Player.getWorldLocation().getPlane();
             double currentHealth = Rs2Player.getHealthPercentage();
             WorldPoint currentPos = Rs2Player.getWorldLocation();
             
