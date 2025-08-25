@@ -210,7 +210,7 @@ public class AgilityScript extends Script
 		String itemsInput = config.itemsToAlch().trim();
 		if (itemsInput.isEmpty())
 		{
-			Microbot.log("No items specified for alching or none available.");
+			// Microbot.log("No items specified for alching or none available.");
 			return Optional.empty();
 		}
 
@@ -222,7 +222,7 @@ public class AgilityScript extends Script
 
 		if (itemsToAlch.isEmpty())
 		{
-			Microbot.log("No valid items specified for alching.");
+			// Microbot.log("No valid items specified for alching.");
 			return Optional.empty();
 		}
 
@@ -325,7 +325,7 @@ public class AgilityScript extends Script
 			return false;
 		}
 		
-		return getAlchItem().isPresent();
+		return true;
 	}
 
 	private boolean performEfficientAlch(TileObject gameObject, String alchItem, int agilityExp)
