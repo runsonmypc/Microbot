@@ -125,17 +125,16 @@ public class AgilityScript extends Script
 					Rs2Walker.walkMiniMap(gameObject.getWorldLocation());
 				}
 
-				// Check if we should wait before clicking
-				if (Rs2Player.isMoving() || Rs2Player.isAnimating()) {
-					// We're still moving/animating from previous obstacle
-					// Check if we got XP (which signals we can click next)
-					if (currentAgilityXp > lastAgilityXp) {
-						// Got XP! Update and proceed to click
-						lastAgilityXp = currentAgilityXp;
-					} else {
-						// Still animating, no XP yet - don't click
-						return;
-					}
+				// Check if we should click (handles animation/XP logic)
+				if (!plugin.getCourseHandler().shouldClickObstacle(currentAgilityXp, lastAgilityXp))
+				{
+					return; // Not ready to click yet
+				}
+				
+				// Update XP if we got it while animating
+				if (currentAgilityXp > lastAgilityXp)
+				{
+					lastAgilityXp = currentAgilityXp;
 				}
 
 				// Handle alchemy if enabled
@@ -187,8 +186,8 @@ public class AgilityScript extends Script
 					plugin.getCourseHandler().waitForCompletion(agilityExp, 
 						Microbot.getClient().getLocalPlayer().getWorldLocation().getPlane());
 					
-					// Update XP tracking
-					lastAgilityXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
+					// XP tracking is already updated before clicking (line 137)
+					// Don't update here to avoid losing early action state
 					
 					// If we're still animating after XP, don't add delays - proceed immediately
 					if (!Rs2Player.isAnimating() && !Rs2Player.isMoving()) {

@@ -77,6 +77,19 @@ public interface AgilityCourseHandler
 		return Rs2GameObject.getAll(validObjectPredicate).stream().findFirst().orElse(null);
 	}
 
+	// Simple method to check if we should click or wait
+	default boolean shouldClickObstacle(final int currentXp, final int lastXp)
+	{
+		// If animating/moving
+		if (Rs2Player.isAnimating() || Rs2Player.isMoving())
+		{
+			// Only click if we got XP (signals completion)
+			return currentXp > lastXp;
+		}
+		// Not animating, safe to click
+		return true;
+	}
+	
 	default boolean waitForCompletion(final int agilityExp, final int plane)
 	{
 		double initialHealth = Rs2Player.getHealthPercentage();
