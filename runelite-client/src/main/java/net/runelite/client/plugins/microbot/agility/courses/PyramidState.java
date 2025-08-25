@@ -10,8 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class PyramidState {
     
     // Timing and cooldown tracking
-    private long lastObstacleStartTime = 0;
-    private long lastClimbingRocksTime = 0;
+    private volatile long lastObstacleStartTime = 0;
+    private volatile long lastClimbingRocksTime = 0;
     
     // State flags - using AtomicBoolean for thread safety
     private final AtomicBoolean currentlyDoingCrossGap = new AtomicBoolean(false);
@@ -19,7 +19,7 @@ public class PyramidState {
     private final AtomicBoolean handlingPyramidTurnIn = new AtomicBoolean(false);
     
     // Random turn-in threshold (4-6 pyramids)
-    private int pyramidTurnInThreshold = generateNewThreshold();
+    private volatile int pyramidTurnInThreshold = generateNewThreshold();
     
     // Cooldown constants
     private static final long OBSTACLE_COOLDOWN = 1500; // 1.5 seconds between obstacles
