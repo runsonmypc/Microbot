@@ -22,6 +22,7 @@ import net.runelite.client.plugins.microbot.agility.courses.PyramidObstacleData.
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -813,15 +814,23 @@ public class PyramidCourse implements AgilityCourseHandler {
             int distanceToStart = playerLocation.distanceTo(START_POINT);
             if (distanceToStart > 3) {
                 // Try to directly click on the pyramid stairs if visible AND reachable
-                TileObject pyramidStairs = Rs2GameObject.findObjectByIdAndDistance(10857, 10);
-                if (pyramidStairs != null && 
-                    pyramidStairs.getWorldLocation().distanceTo(START_POINT) <= 2 &&
-                    Rs2GameObject.canReach(pyramidStairs.getWorldLocation())) {
-                    // We're close and can reach it (e.g., coming from pyramid exit) - click directly
-                    log.debug("Clicking directly on pyramid stairs (reachable from current position)");
-                    if (Rs2GameObject.interact(pyramidStairs)) {
-                        Global.sleep(600, 800); // Small delay after clicking
-                        return true;
+                List<TileObject> stairsCandidates = Rs2GameObject.getAll(obj ->
+                    obj.getId() == 10857 &&
+                    obj.getPlane() == playerLocation.getPlane() &&
+                    obj.getWorldLocation().distanceTo(playerLocation) <= 10 &&
+                    obj.getWorldLocation().distanceTo(START_POINT) <= 2 &&
+                    Rs2GameObject.canReach(obj.getWorldLocation())
+                );
+                if (!stairsCandidates.isEmpty()) {
+                    TileObject pyramidStairs = stairsCandidates.stream()
+                        .min(Comparator.comparingInt(obj -> obj.getWorldLocation().distanceTo(playerLocation)))
+                        .orElse(null);
+                    if (pyramidStairs != null) {
+                        log.debug("Clicking directly on pyramid stairs (reachable from current position)");
+                        if (Rs2GameObject.interact(pyramidStairs)) {
+                            Global.sleep(600, 800); // Small delay after clicking
+                            return true;
+                        }
                     }
                 }
                 
@@ -1185,7 +1194,7 @@ public class PyramidCourse implements AgilityCourseHandler {
      */
     private boolean handleEmptyWaterskins() {
         if (Rs2Inventory.contains(ItemID.WATERSKIN0)) {
-            log.info("Found empty waterskin(s), dropping them");
+            log.debug("Found empty waterskin(s), dropping them");
             Rs2Inventory.drop(ItemID.WATERSKIN0);
             Global.sleep(300, 500);
             return true;
