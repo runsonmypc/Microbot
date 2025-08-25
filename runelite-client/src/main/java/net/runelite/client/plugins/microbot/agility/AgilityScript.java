@@ -160,7 +160,7 @@ public class AgilityScript extends Script
 								else
 								{
 									// Still do normal alch if far enough but efficient alching is disabled
-									performNormalAlch(alchItem.get(), currentAgilityXp);
+									performNormalAlch(alchItem.get());
 								}
 							}
 							// Skip alching if obstacle is too close
@@ -176,7 +176,7 @@ public class AgilityScript extends Script
 								}
 							}
 							// Fall back to normal alching
-							performNormalAlch(alchItem.get(), currentAgilityXp);
+							performNormalAlch(alchItem.get());
 						}
 					}
 				}
@@ -373,7 +373,7 @@ public class AgilityScript extends Script
 		return false;
 	}
 
-	private void performNormalAlch(String alchItem, int currentAgilityXp)
+	private void performNormalAlch(String alchItem)
 	{
 		// Simple alch - waitForCompletion handles all timing
 		Rs2Magic.alch(alchItem, 50, 75);
