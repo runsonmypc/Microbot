@@ -79,8 +79,11 @@ public class PyramidCourse implements AgilityCourseHandler {
     public TileObject getCurrentObstacle() {
         WorldPoint playerPos = Rs2Player.getWorldLocation();
         
-        log.debug("=== getCurrentObstacle called - Player at " + playerPos + " (plane: " + playerPos.getPlane() + ") ===");
-        log.debug("FLAG STATES: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + state.isDoingXpObstacle() + ", PyramidTurnIn=" + state.isHandlingPyramidTurnIn());
+        if (log.isDebugEnabled()) {
+            log.debug("=== getCurrentObstacle called - Player at {} (plane: {}) ===", playerPos, playerPos.getPlane());
+            log.debug("FLAG STATES: CrossGap={}, XpObstacle={}, PyramidTurnIn={}", 
+                state.isDoingCrossGap(), state.isDoingXpObstacle(), state.isHandlingPyramidTurnIn());
+        }
         
         // Check if we should turn in pyramids (either inventory full OR reached random threshold) AND we're on ground level
         int pyramidCount = Rs2Inventory.count(ItemID.PYRAMID_TOP);
@@ -90,10 +93,13 @@ public class PyramidCourse implements AgilityCourseHandler {
             if (pyramidCount > 0) {
                 // We have pyramid tops - handle turn-in
                 if (!state.isHandlingPyramidTurnIn()) {
-                    if (Rs2Inventory.isFull()) {
-                        log.debug("Inventory is full with " + pyramidCount + " pyramid tops - going to Simon Templeton");
-                    } else {
-                        log.debug("Reached threshold of " + state.getPyramidTurnInThreshold() + " pyramids (have " + pyramidCount + ") - going to Simon Templeton");
+                    if (log.isDebugEnabled()) {
+                        if (Rs2Inventory.isFull()) {
+                            log.debug("Inventory is full with {} pyramid tops - going to Simon Templeton", pyramidCount);
+                        } else {
+                            log.debug("Reached threshold of {} pyramids (have {}) - going to Simon Templeton", 
+                                state.getPyramidTurnInThreshold(), pyramidCount);
+                        }
                     }
                     state.startPyramidTurnIn();
                 }
@@ -156,13 +162,16 @@ public class PyramidCourse implements AgilityCourseHandler {
         ObstacleArea currentArea = null;
         
         // Debug: log areas being checked for current plane
-        log.debug("Checking areas for plane " + playerPos.getPlane() + " player position " + playerPos + ":");
-        for (ObstacleArea area : OBSTACLE_AREAS) {
-            if (area.plane == playerPos.getPlane()) {
-                boolean contains = area.containsPlayer(playerPos);
-                log.debug("  - Area: " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ") - contains player: " + contains);
-                if (contains) {
-                    log.debug("    -> Obstacle ID: " + area.obstacleId + " at location: " + area.obstacleLocation);
+        if (log.isDebugEnabled()) {
+            log.debug("Checking areas for plane {} player position {}:", playerPos.getPlane(), playerPos);
+            for (ObstacleArea area : OBSTACLE_AREAS) {
+                if (area.plane == playerPos.getPlane()) {
+                    boolean contains = area.containsPlayer(playerPos);
+                    log.debug("  - Area: {} at ({},{}) to ({},{}) - contains player: {}", 
+                        area.name, area.minX, area.minY, area.maxX, area.maxY, contains);
+                    if (contains) {
+                        log.debug("    -> Obstacle ID: {} at location: {}", area.obstacleId, area.obstacleLocation);
+                    }
                 }
             }
         }
@@ -178,39 +187,50 @@ public class PyramidCourse implements AgilityCourseHandler {
                 }
                 
                 currentArea = area;
-                log.debug("Found player in area: " + area.name + " (obstacle ID: " + area.obstacleId + ")");
-                // Debug: log if this is a plank area
-                if (area.obstacleId == 10868) {
-                    log.debug("  Player in PLANK area - should look for plank end ground object");
+                if (log.isDebugEnabled()) {
+                    log.debug("Found player in area: {} (obstacle ID: {})", area.name, area.obstacleId);
+                    // Debug: log if this is a plank area
+                    if (area.obstacleId == 10868) {
+                        log.debug("  Player in PLANK area - should look for plank end ground object");
+                    }
                 }
                 break;
             }
         }
         
         if (currentArea == null) {
-            log.debug("Player not in any defined obstacle area at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
+            if (log.isDebugEnabled()) {
+                log.debug("Player not in any defined obstacle area at {} (plane: {})", playerPos, playerPos.getPlane());
+            }
             
             // Special check for floor 4 start position
             if (playerPos.getPlane() == 2 && playerPos.getX() == 3041 && playerPos.getY() == 4695) {
-                log.debug("SPECIAL CASE: Player at floor 4 start position (3041, 4695)");
+                if (log.isDebugEnabled()) {
+                    log.debug("SPECIAL CASE: Player at floor 4 start position (3041, 4695)");
+                }
                 // Manually find the gap
                 TileObject gap = findNearestObstacleWithinDistance(playerPos, 10859, 5);
                 if (gap != null) {
-                    log.debug("Found Gap manually at " + gap.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found Gap manually at {}", gap.getWorldLocation());
+                    }
                     return gap;
                 }
             }
             
             // Log all areas on current plane for debugging
-            log.debug("Available areas on plane " + playerPos.getPlane() + ":");
-            int count = 0;
-            for (ObstacleArea area : OBSTACLE_AREAS) {
-                if (area.plane == playerPos.getPlane()) {
-                    log.debug("  - " + area.name + " at (" + area.minX + "," + area.minY + ") to (" + area.maxX + "," + area.maxY + ")");
-                    count++;
-                    if (count > 10) {
-                        log.debug("  ... and more areas");
-                        break;
+            if (log.isDebugEnabled()) {
+                log.debug("Available areas on plane {}:", playerPos.getPlane());
+                int count = 0;
+                for (ObstacleArea area : OBSTACLE_AREAS) {
+                    if (area.plane == playerPos.getPlane()) {
+                        log.debug("  - {} at ({},{}) to ({},{})", 
+                            area.name, area.minX, area.minY, area.maxX, area.maxY);
+                        count++;
+                        if (count > 10) {
+                            log.debug("  ... and more areas");
+                            break;
+                        }
                     }
                 }
             }
@@ -230,7 +250,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             return findNearestPyramidObstacle(playerPos);
         }
         
-        log.debug("Player in area for: " + currentArea.name + " at " + playerPos + " (plane: " + playerPos.getPlane() + ")");
+        if (log.isDebugEnabled()) {
+            log.debug("Player in area for: {} at {} (plane: {})", currentArea.name, playerPos, playerPos.getPlane());
+        }
         
         // Find the specific obstacle instance
         TileObject obstacle = null;
@@ -238,7 +260,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         // For gaps and ledges, always find the nearest one since there can be multiple
         // Also for floor 4, always use nearest search since obstacles can be multi-tile
         if (currentArea.obstacleId == 10859 || currentArea.obstacleId == 10861 || currentArea.obstacleId == 10884 || currentArea.obstacleId == 10860 || playerPos.getPlane() == 2) {
-            log.debug("Looking for nearest " + currentArea.name);
+            if (log.isDebugEnabled()) {
+                log.debug("Looking for nearest {}", currentArea.name);
+            }
             
             // Use strict sequential checking to prevent skipping ahead
             obstacle = findNearestObstacleStrict(playerPos, currentArea.obstacleId, currentArea);
@@ -246,14 +270,20 @@ public class PyramidCourse implements AgilityCourseHandler {
             obstacle = findObstacleAt(currentArea.obstacleLocation, currentArea.obstacleId);
             
             if (obstacle == null) {
-                log.debug("Could not find " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at expected location " + currentArea.obstacleLocation);
+                if (log.isDebugEnabled()) {
+                    log.debug("Could not find {} (ID: {}) at expected location {}", 
+                        currentArea.name, currentArea.obstacleId, currentArea.obstacleLocation);
+                }
                 // Try to find any instance of this obstacle type nearby with strict checking
                 obstacle = findNearestObstacleStrict(playerPos, currentArea.obstacleId, currentArea);
             }
         }
         
         if (obstacle != null) {
-            log.debug("Selected obstacle: " + currentArea.name + " (ID: " + currentArea.obstacleId + ") at " + obstacle.getWorldLocation() + " for player at " + playerPos);
+            if (log.isDebugEnabled()) {
+                log.debug("Selected obstacle: {} (ID: {}) at {} for player at {}", 
+                    currentArea.name, currentArea.obstacleId, obstacle.getWorldLocation(), playerPos);
+            }
             
             // Track long-animation gap obstacles specifically
             // These gaps have long animations that move the player >3 tiles
@@ -261,7 +291,10 @@ public class PyramidCourse implements AgilityCourseHandler {
                 currentArea.obstacleId == 10882) { // Gap (floor 1) also has long animation
                 // Cross gap time is tracked in startCrossGap
                 state.startCrossGap(); // Set flag that we're doing Cross Gap-type obstacle
-                log.debug("Detected long-animation gap obstacle (ID: " + currentArea.obstacleId + ") - setting flag to block all other obstacles");
+                if (log.isDebugEnabled()) {
+                    log.debug("Detected long-animation gap obstacle (ID: {}) - setting flag to block all other obstacles", 
+                        currentArea.obstacleId);
+                }
             }
             
             // Track any XP-granting obstacle (gaps, planks, ledges, low walls)
@@ -296,23 +329,31 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findObstacleAt(WorldPoint location, int obstacleId) {
-        log.debug("findObstacleAt: Looking for obstacle " + obstacleId + " at " + location);
+        if (log.isDebugEnabled()) {
+            log.debug("findObstacleAt: Looking for obstacle {} at {}", obstacleId, location);
+        }
         
         // Special handling for plank end which is a ground object
         if (obstacleId == 10868) {
             List<GroundObject> groundObjects = Rs2GameObject.getGroundObjects();
-            log.debug("Looking for plank end at " + location + ", checking " + groundObjects.size() + " ground objects");
+            if (log.isDebugEnabled()) {
+                log.debug("Looking for plank end at {}, checking {} ground objects", location, groundObjects.size());
+            }
             for (GroundObject go : groundObjects) {
                 if (go.getId() == obstacleId && go.getWorldLocation().equals(location)) {
-                    log.debug("Found plank end (ground object) at " + go.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found plank end (ground object) at {}", go.getWorldLocation());
+                    }
                     return go;
                 }
             }
-            log.debug("No plank end found at expected location " + location);
-            // List all plank ends found
-            for (GroundObject go : groundObjects) {
-                if (go.getId() == obstacleId) {
-                    log.debug("  Found plank end at " + go.getWorldLocation() + " (not at expected location)");
+            if (log.isDebugEnabled()) {
+                log.debug("No plank end found at expected location {}", location);
+                // List all plank ends found
+                for (GroundObject go : groundObjects) {
+                    if (go.getId() == obstacleId) {
+                        log.debug("  Found plank end at {} (not at expected location)", go.getWorldLocation());
+                    }
                 }
             }
             return null;
@@ -324,17 +365,22 @@ public class PyramidCourse implements AgilityCourseHandler {
             obj.getWorldLocation().equals(location)
         );
         
-        log.debug("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " at " + location);
+        if (log.isDebugEnabled()) {
+            log.debug("Found {} obstacles with ID {} at {}", obstacles.size(), obstacleId, location);
+        }
         
         if (obstacles.isEmpty()) {
-            // Log all obstacles of this type on the current plane
-            List<TileObject> allObstaclesOfType = Rs2GameObject.getAll(obj -> 
-                obj.getId() == obstacleId && 
-                obj.getPlane() == location.getPlane()
-            );
-            log.debug("No obstacle found at exact location. Found " + allObstaclesOfType.size() + " obstacles with ID " + obstacleId + " on plane " + location.getPlane() + ":");
-            for (TileObject obj : allObstaclesOfType) {
-                log.debug("  - " + obstacleId + " at " + obj.getWorldLocation());
+            if (log.isDebugEnabled()) {
+                // Log all obstacles of this type on the current plane
+                List<TileObject> allObstaclesOfType = Rs2GameObject.getAll(obj -> 
+                    obj.getId() == obstacleId && 
+                    obj.getPlane() == location.getPlane()
+                );
+                log.debug("No obstacle found at exact location. Found {} obstacles with ID {} on plane {}:", 
+                    allObstaclesOfType.size(), obstacleId, location.getPlane());
+                for (TileObject obj : allObstaclesOfType) {
+                    log.debug("  - {} at {}", obstacleId, obj.getWorldLocation());
+                }
             }
             return null;
         }
@@ -343,7 +389,9 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findNearestObstacleStrict(WorldPoint playerPos, int obstacleId, ObstacleArea currentArea) {
-        log.debug("Looking for obstacle " + obstacleId + " with strict sequential checking");
+        if (log.isDebugEnabled()) {
+            log.debug("Looking for obstacle {} with strict sequential checking", obstacleId);
+        }
         
         // Special handling for floor 4 gaps FIRST - need to select the correct one
         // Check if we're on floor 4 (plane 2) and looking for a gap, regardless of exact area name
@@ -361,7 +409,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 if (!gaps.isEmpty()) {
                     TileObject secondGap = gaps.get(0);
-                    log.debug("Found second gap at " + secondGap.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found second gap at {}", secondGap.getWorldLocation());
+                    }
                     return secondGap;
                 } else {
                     log.debug("Could not find second gap on floor 4!");
@@ -381,7 +431,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 if (!gaps.isEmpty()) {
                     TileObject firstGap = gaps.get(0);
-                    log.debug("Found first gap at " + firstGap.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found first gap at {}", firstGap.getWorldLocation());
+                    }
                     return firstGap;
                 }
             }
@@ -425,7 +477,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                     .orElse(null);
                     
                 if (nearest != null) {
-                    log.debug("Found strictly checked obstacle at " + nearest.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found strictly checked obstacle at {}", nearest.getWorldLocation());
+                    }
                     return nearest;
                 }
             }
@@ -441,7 +495,9 @@ public class PyramidCourse implements AgilityCourseHandler {
     }
     
     private TileObject findNearestObstacleWithinDistance(WorldPoint playerPos, int obstacleId, int maxDistance) {
-        log.debug("Looking for obstacle " + obstacleId + " within " + maxDistance + " tiles");
+        if (log.isDebugEnabled()) {
+            log.debug("Looking for obstacle {} within {} tiles", obstacleId, maxDistance);
+        }
         
         List<TileObject> obstacles = Rs2GameObject.getAll(obj -> 
             obj.getId() == obstacleId && 
@@ -450,14 +506,19 @@ public class PyramidCourse implements AgilityCourseHandler {
         );
         
         if (obstacles.isEmpty()) {
-            log.debug("No obstacles found within " + maxDistance + " tiles");
+            if (log.isDebugEnabled()) {
+                log.debug("No obstacles found within {} tiles", maxDistance);
+            }
             return null;
         }
         
         // Log all found obstacles for debugging
-        log.debug("Found " + obstacles.size() + " obstacles within " + maxDistance + " tiles:");
-        for (TileObject obj : obstacles) {
-            log.debug("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+        if (log.isDebugEnabled()) {
+            log.debug("Found {} obstacles within {} tiles:", obstacles.size(), maxDistance);
+            for (TileObject obj : obstacles) {
+                log.debug("  - {} at {} (distance: {})", 
+                    obstacleId, obj.getWorldLocation(), obj.getWorldLocation().distanceTo(playerPos));
+            }
         }
         
         return obstacles.stream()
@@ -471,7 +532,9 @@ public class PyramidCourse implements AgilityCourseHandler {
     private TileObject findNearestObstacle(WorldPoint playerPos, int obstacleId) {
         // Special case for Ledge on floor 2 - different ledges based on position
         if (obstacleId == 10860 && playerPos.getPlane() == 2) {
-            log.debug("Special handling for floor 2 Ledge at player position " + playerPos);
+            if (log.isDebugEnabled()) {
+                log.debug("Special handling for floor 2 Ledge at player position {}", playerPos);
+            }
             
             // If player is anywhere in the path from Gap 10861 to Ledge, use east ledge
             if ((playerPos.getX() >= 3372 && playerPos.getX() <= 3373 && playerPos.getY() >= 2841 && playerPos.getY() <= 2850) ||
@@ -481,7 +544,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 // Find the specific ledge at (3372, 2839)
                 TileObject eastLedge = findObstacleAt(new WorldPoint(3372, 2839, 2), obstacleId);
                 if (eastLedge != null) {
-                    log.debug("Found east Ledge at " + eastLedge.getWorldLocation());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found east Ledge at {}", eastLedge.getWorldLocation());
+                    }
                     return eastLedge;
                 } else {
                     log.debug("Could not find east Ledge at expected location (3372, 2839)");
@@ -508,9 +573,11 @@ public class PyramidCourse implements AgilityCourseHandler {
             );
             
             // Log all ledges found for debugging
-            log.debug("Found " + obstacles.size() + " potential ledges on floor 2:");
-            for (TileObject obj : obstacles) {
-                log.debug("  - Ledge at " + obj.getWorldLocation());
+            if (log.isDebugEnabled()) {
+                log.debug("Found {} potential ledges on floor 2:", obstacles.size());
+                for (TileObject obj : obstacles) {
+                    log.debug("  - Ledge at {}", obj.getWorldLocation());
+                }
             }
             
             // Find the ledge closest to the expected position (3364, 2841)
@@ -523,7 +590,10 @@ public class PyramidCourse implements AgilityCourseHandler {
                 .orElse(null);
                 
             if (bestLedge != null) {
-                log.debug("Selected ledge at " + bestLedge.getWorldLocation() + " (closest to expected position " + expectedLedgePos + ")");
+                if (log.isDebugEnabled()) {
+                    log.debug("Selected ledge at {} (closest to expected position {})", 
+                        bestLedge.getWorldLocation(), expectedLedgePos);
+                }
                 return bestLedge;
             } else {
                 log.warn("No suitable ledge found on floor 2!");
@@ -548,9 +618,12 @@ public class PyramidCourse implements AgilityCourseHandler {
                 return null;
             }
             
-            log.debug("Found " + nearbyPlanks.size() + " plank ends nearby");
-            for (GroundObject go : nearbyPlanks) {
-                log.debug("  - Plank end at " + go.getWorldLocation() + " (distance: " + go.getWorldLocation().distanceTo(playerPos) + ")");
+            if (log.isDebugEnabled()) {
+                log.debug("Found {} plank ends nearby", nearbyPlanks.size());
+                for (GroundObject go : nearbyPlanks) {
+                    log.debug("  - Plank end at {} (distance: {})", 
+                        go.getWorldLocation(), go.getWorldLocation().distanceTo(playerPos));
+                }
             }
             
             // Return closest plank end
@@ -574,9 +647,12 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Log all found obstacles for debugging
-        log.debug("Found " + obstacles.size() + " obstacles with ID " + obstacleId + " on plane " + playerPos.getPlane() + ":");
-        for (TileObject obj : obstacles) {
-            log.debug("  - " + obstacleId + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+        if (log.isDebugEnabled()) {
+            log.debug("Found {} obstacles with ID {} on plane {}:", obstacles.size(), obstacleId, playerPos.getPlane());
+            for (TileObject obj : obstacles) {
+                log.debug("  - {} at {} (distance: {})", 
+                    obstacleId, obj.getWorldLocation(), obj.getWorldLocation().distanceTo(playerPos));
+            }
         }
         
         // For stairs on floor 1, we need to filter out the wrong stairs
@@ -617,7 +693,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             // Return the northernmost low wall
             if (!obstacles.isEmpty()) {
                 TileObject northWall = obstacles.get(0);
-                log.debug("Selected northernmost low wall at " + northWall.getWorldLocation());
+                if (log.isDebugEnabled()) {
+                    log.debug("Selected northernmost low wall at {}", northWall.getWorldLocation());
+                }
                 return northWall;
             }
         }
@@ -654,7 +732,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             if (go.getId() == 10868 && 
                 go.getPlane() == playerPos.getPlane() &&
                 go.getWorldLocation().distanceTo(playerPos) <= 15) {
-                log.debug("Found nearby plank end (ground object) at " + go.getWorldLocation());
+                if (log.isDebugEnabled()) {
+                    log.debug("Found nearby plank end (ground object) at {}", go.getWorldLocation());
+                }
                 return go;
             }
         }
@@ -670,10 +750,14 @@ public class PyramidCourse implements AgilityCourseHandler {
         );
         
         if (nearbyObstacles.isEmpty()) {
-            log.debug("No pyramid obstacles found within " + searchDistance + " tiles on plane " + playerPos.getPlane());
+            if (log.isDebugEnabled()) {
+                log.debug("No pyramid obstacles found within {} tiles on plane {}", searchDistance, playerPos.getPlane());
+            }
             // Try expanding search radius for floor 4 (pyramid top area)
             if (playerPos.getPlane() == 2 && playerPos.getX() >= 3040 && playerPos.getX() <= 3050) {
-                log.debug("Expanding search for floor 4 pyramid top area...");
+                if (log.isDebugEnabled()) {
+                    log.debug("Expanding search for floor 4 pyramid top area...");
+                }
                 nearbyObstacles = Rs2GameObject.getAll(obj -> 
                     finalObstacleIds.contains(obj.getId()) && 
                     obj.getPlane() == playerPos.getPlane()
@@ -681,9 +765,12 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
         }
         
-        log.debug("Found " + nearbyObstacles.size() + " pyramid obstacles nearby:");
-        for (TileObject obj : nearbyObstacles) {
-            log.debug("  - ID " + obj.getId() + " at " + obj.getWorldLocation() + " (distance: " + obj.getWorldLocation().distanceTo(playerPos) + ")");
+        if (log.isDebugEnabled()) {
+            log.debug("Found {} pyramid obstacles nearby:", nearbyObstacles.size());
+            for (TileObject obj : nearbyObstacles) {
+                log.debug("  - ID {} at {} (distance: {})", 
+                    obj.getId(), obj.getWorldLocation(), obj.getWorldLocation().distanceTo(playerPos));
+            }
         }
         
         return nearbyObstacles.stream()
@@ -718,10 +805,13 @@ public class PyramidCourse implements AgilityCourseHandler {
             
             if (shouldTurnIn) {
                 if (!state.isHandlingPyramidTurnIn()) {
-                    if (Rs2Inventory.isFull()) {
-                        log.debug("Inventory is full with " + pyramidCount + " pyramid tops - going to Simon instead of pyramid start");
-                    } else {
-                        log.debug("Reached threshold of " + state.getPyramidTurnInThreshold() + " pyramids (have " + pyramidCount + ") - going to Simon instead of pyramid start");
+                    if (log.isDebugEnabled()) {
+                        if (Rs2Inventory.isFull()) {
+                            log.debug("Inventory is full with {} pyramid tops - going to Simon instead of pyramid start", pyramidCount);
+                        } else {
+                            log.debug("Reached threshold of {} pyramids (have {}) - going to Simon instead of pyramid start", 
+                                state.getPyramidTurnInThreshold(), pyramidCount);
+                        }
                     }
                     state.startPyramidTurnIn();
                 }
@@ -747,7 +837,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 
                 // Can't reach stairs directly (e.g., coming from Simon with climbing rocks in the way)
                 // Use Rs2Walker to navigate around obstacles
-                log.debug("Walking to pyramid start point - stairs not reachable directly (distance: " + distanceToStart + ")");
+                if (log.isDebugEnabled()) {
+                    log.debug("Walking to pyramid start point - stairs not reachable directly (distance: {})", distanceToStart);
+                }
                 Rs2Walker.walkTo(START_POINT, 2);
                 return true;
             }
@@ -781,8 +873,10 @@ public class PyramidCourse implements AgilityCourseHandler {
             startPos.getX() >= 3042 && startPos.getX() <= 3043 &&
             startPos.getY() >= 4697 && startPos.getY() <= 4698;
         
-        log.debug("Starting obstacle at " + startPos + ", initial XP: " + agilityExp);
-        log.debug("Flags: CrossGap=" + state.isDoingCrossGap() + ", XpObstacle=" + state.isDoingXpObstacle());
+        if (log.isDebugEnabled()) {
+            log.debug("Starting obstacle at {}, initial XP: {}", startPos, agilityExp);
+            log.debug("Flags: CrossGap={}, XpObstacle={}", state.isDoingCrossGap(), state.isDoingXpObstacle());
+        }
         
         while (System.currentTimeMillis() - startTime < timeoutMs) {
             int currentXp = Microbot.getClient().getSkillExperience(Skill.AGILITY);
@@ -834,7 +928,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 }
                 
                 // Any other XP gain means obstacle is complete (for XP-granting obstacles)
-                log.debug("Received " + xpGained + " XP - obstacle complete!");
+                if (log.isDebugEnabled()) {
+                    log.debug("Received {} XP - obstacle complete!", xpGained);
+                }
                 receivedXp = true;
                 lastKnownXp = currentXp;
                 
@@ -844,7 +940,9 @@ public class PyramidCourse implements AgilityCourseHandler {
                 // For Cross Gap, ensure minimum time has passed even with XP
                 if (wasCrossGap && System.currentTimeMillis() - startTime < 3500) {
                     long waitTime = 3500 - (System.currentTimeMillis() - startTime);
-                    log.debug("Cross Gap - waiting additional " + waitTime + "ms for minimum duration");
+                    if (log.isDebugEnabled()) {
+                        log.debug("Cross Gap - waiting additional {}ms for minimum duration", waitTime);
+                    }
                     Global.sleep((int)waitTime);
                 }
                 
@@ -924,20 +1022,27 @@ public class PyramidCourse implements AgilityCourseHandler {
                         }
                         // After 4 seconds without XP, check if we at least moved
                         if (distanceMoved >= 3) {
-                            log.debug("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
-                            log.debug("Cross Gap flag state before returning: " + state.isDoingCrossGap());
-                            log.debug("XP obstacle flag state before returning: " + state.isDoingXpObstacle());
+                            if (log.isDebugEnabled()) {
+                                log.debug("WARNING: Expected XP but didn't receive it after 4s - completing based on movement");
+                                log.debug("Cross Gap flag state before returning: {}", state.isDoingCrossGap());
+                                log.debug("XP obstacle flag state before returning: {}", state.isDoingXpObstacle());
+                            }
                             // Clear XP obstacle flag but NOT Cross Gap flag
                             // Cross Gap needs to wait for XP regardless of movement
                             state.clearXpObstacle();
-                            log.debug("After clearing XP flag - Cross Gap: " + state.isDoingCrossGap() + ", XP obstacle: " + state.isDoingXpObstacle());
+                            if (log.isDebugEnabled()) {
+                                log.debug("After clearing XP flag - Cross Gap: {}, XP obstacle: {}", 
+                                    state.isDoingCrossGap(), state.isDoingXpObstacle());
+                            }
                             return true;
                         }
                     }
                     
                     // For non-XP obstacles, movement indicates completion
                     if (distanceMoved >= 3 && !state.isDoingXpObstacle()) {
-                        log.debug("Non-XP obstacle complete (moved " + distanceMoved + " tiles)");
+                        if (log.isDebugEnabled()) {
+                            log.debug("Non-XP obstacle complete (moved {} tiles)", distanceMoved);
+                        }
                         
                         // Note: We don't clear Cross Gap or XP obstacle flags here
                         // They should only be cleared by XP receipt or timeout
@@ -968,7 +1073,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         }
         
         // Timeout reached
-        log.debug("Timeout after " + timeoutMs + "ms - checking if made progress");
+        if (log.isDebugEnabled()) {
+            log.debug("Timeout after {}ms - checking if made progress", timeoutMs);
+        }
         int distanceMoved = Rs2Player.getWorldLocation().distanceTo(startPos);
         
         // Clear flags on timeout
@@ -983,7 +1090,9 @@ public class PyramidCourse implements AgilityCourseHandler {
         
         // If we received XP or moved significantly, consider it successful
         if (receivedXp || distanceMoved >= 3) {
-            log.debug("Made progress despite timeout (XP: " + receivedXp + ", moved: " + distanceMoved + " tiles)");
+            if (log.isDebugEnabled()) {
+                log.debug("Made progress despite timeout (XP: {}, moved: {} tiles)", receivedXp, distanceMoved);
+            }
             return true;
         }
         
@@ -1051,7 +1160,9 @@ public class PyramidCourse implements AgilityCourseHandler {
             }
             
             // Simon not found or not reachable, walk to him
-            log.debug("Simon not found or not reachable, walking to location " + SIMON_LOCATION);
+            if (log.isDebugEnabled()) {
+                log.debug("Simon not found or not reachable, walking to location {}", SIMON_LOCATION);
+            }
             Rs2Walker.walkTo(SIMON_LOCATION, 2);
             Rs2Player.waitForWalking();
             

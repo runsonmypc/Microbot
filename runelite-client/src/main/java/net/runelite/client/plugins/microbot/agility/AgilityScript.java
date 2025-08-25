@@ -179,7 +179,7 @@ public class AgilityScript extends Script
 			{
 				Microbot.log("An error occurred: " + ex.getMessage(), ex);
 			}
-		}, 0, 100, TimeUnit.MILLISECONDS);
+		}, 0, 600, TimeUnit.MILLISECONDS);
 		return true;
 	}
 
