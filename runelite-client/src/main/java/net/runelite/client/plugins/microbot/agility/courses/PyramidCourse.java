@@ -36,16 +36,6 @@ public class PyramidCourse implements AgilityCourseHandler {
     // Centralized state tracking
     private final PyramidState state = new PyramidState();
     
-    // Define the strict obstacle sequence to prevent skipping ahead
-    private static final List<Integer> FLOOR_2_SEQUENCE = Arrays.asList(
-        10884, // Gap Cross 1
-        10859, // Gap Jump  
-        10861, // Gap Cross 2
-        10860, // Ledge
-        10865, // Low wall
-        10859, // Gap jump (end)
-        10857  // Stairs up
-    );
     
     // Obstacle areas are now defined in PyramidObstacleData for better maintainability
     private static final List<ObstacleArea> OBSTACLE_AREAS = PyramidObstacleData.OBSTACLE_AREAS;
