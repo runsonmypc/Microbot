@@ -109,7 +109,7 @@ public class MixologyScript extends Script {
                     agaPasteAmount = Integer.parseInt(Rs2Widget.getWidget(882, 2).getDynamicChildren()[11].getText()) + Rs2Inventory.itemQuantity(ItemID.MM_AGA_PASTE);
                     lyePasteAmount = Integer.parseInt(Rs2Widget.getWidget(882, 2).getDynamicChildren()[14].getText()) + Rs2Inventory.itemQuantity(ItemID.MM_LYE_PASTE);
 
-                    if (mixologyState != MixologyState.REFINER && (moxPasteAmount < 100 || agaPasteAmount < 100 || lyePasteAmount < 100)) {
+                    if (mixologyState != MixologyState.REFINER && mixologyState != MixologyState.CONVEYER_BELT && (moxPasteAmount < 100 || agaPasteAmount < 100 || lyePasteAmount < 100)) {
                         mixologyState = MixologyState.REFINER;
                     } else if (Rs2Inventory.hasItem(ItemID.MM_MOX_PASTE) || Rs2Inventory.hasItem(ItemID.MM_LYE_PASTE) || Rs2Inventory.hasItem(ItemID.MM_AGA_PASTE)) {
                         if (Integer.parseInt(Rs2Widget.getWidget(882, 2).getDynamicChildren()[8].getText()) >= 3000 && Rs2Inventory.hasItem(ItemID.MM_MOX_PASTE)) {
