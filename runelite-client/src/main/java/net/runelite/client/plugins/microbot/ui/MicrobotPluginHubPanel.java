@@ -123,10 +123,47 @@ public class MicrobotPluginHubPanel extends PluginPanel {
                     return;
                 }
 
-                SwingUtilities.invokeLater(() -> setIcon(new ImageIcon(img)));
+                // Scale the image to fit within the icon area while maintaining aspect ratio
+                int iconWidth = 48; // ICON_WIDTH as defined in PluginItem
+                int iconHeight = 70; // HEIGHT as defined in PluginItem
+
+                BufferedImage scaledImg = scaleImageToFit(img, iconWidth, iconHeight);
+                SwingUtilities.invokeLater(() -> setIcon(new ImageIcon(scaledImg)));
             } catch (IOException e) {
                 log.info("Cannot download icon \"{}\"", iconUrl, e);
             }
+        }
+
+        /**
+         * Scales an image to fit within the specified dimensions while maintaining aspect ratio
+         */
+        private BufferedImage scaleImageToFit(BufferedImage originalImage, int maxWidth, int maxHeight) {
+            int originalWidth = originalImage.getWidth();
+            int originalHeight = originalImage.getHeight();
+
+            // Calculate the scaling factor to fit the image within the bounds
+            double scaleX = (double) maxWidth / originalWidth;
+            double scaleY = (double) maxHeight / originalHeight;
+            double scale = Math.min(scaleX, scaleY); // Use the smaller scale to ensure it fits
+
+            // Calculate the new dimensions
+            int newWidth = (int) (originalWidth * scale);
+            int newHeight = (int) (originalHeight * scale);
+
+            // Create a new scaled image
+            BufferedImage scaledImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = scaledImage.createGraphics();
+
+            // Enable high-quality rendering
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Draw the scaled image
+            g2d.drawImage(originalImage, 0, 0, newWidth, newHeight, null);
+            g2d.dispose();
+
+            return scaledImage;
         }
     }
 
@@ -178,7 +215,7 @@ public class MicrobotPluginHubPanel extends PluginPanel {
 
             Collections.addAll(keywords, SPACES.split(manifest.getDescription()));
 
-            Collections.addAll(keywords, manifest.getAuthor());
+            Collections.addAll(keywords, manifest.getAuthors());
 
             Collections.addAll(keywords, manifest.getTags());
 
@@ -192,7 +229,7 @@ public class MicrobotPluginHubPanel extends PluginPanel {
             pluginName.setFont(FontManager.getRunescapeBoldFont());
             pluginName.setToolTipText(manifest.getDisplayName());
 
-            JLabel author = new JLabel(manifest.getAuthor());
+            JLabel author = new JLabel(manifest.getAuthors().length > 1 ? "Multiple authors" : manifest.getAuthor());
             author.setFont(FontManager.getRunescapeSmallFont());
             author.setToolTipText(manifest.getAuthor());
 
@@ -253,13 +290,13 @@ public class MicrobotPluginHubPanel extends PluginPanel {
                         String requiredVersion = manifest.getMinClientVersion();
 
                         String message = String.format(
-                            "Cannot install plugin '%s'.\n\n" +
-                            "Required client version: %s\n" +
-                            "Current client version: %s\n\n" +
-                            "Please update your Microbot client to install this plugin.",
-                            manifest.getDisplayName(),
-                            requiredVersion != null ? requiredVersion : "Unknown",
-							_currentMicrobotVersion != null ? _currentMicrobotVersion : "Unknown"
+                                "Cannot install plugin '%s'.\n\n" +
+                                        "Required client version: %s\n" +
+                                        "Current client version: %s\n\n" +
+                                        "Please update your Microbot client to install this plugin.",
+                                manifest.getDisplayName(),
+                                requiredVersion != null ? requiredVersion : "Unknown",
+                                _currentMicrobotVersion != null ? _currentMicrobotVersion : "Unknown"
                         );
                         // Create a custom dialog
                         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Version Incompatibility", true);
@@ -283,8 +320,8 @@ public class MicrobotPluginHubPanel extends PluginPanel {
                         okButton.setBackground(ColorScheme.BRAND_ORANGE);
                         okButton.setForeground(ColorScheme.DARKER_GRAY_COLOR);
                         okButton.setBorder(BorderFactory.createCompoundBorder(
-                            BorderFactory.createEmptyBorder(1, 1, 1, 1),
-                            BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1)
+                                BorderFactory.createEmptyBorder(1, 1, 1, 1),
+                                BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1)
                         ));
                         okButton.setFocusPainted(false);
                         okButton.setFont(okButton.getFont().deriveFont(Font.BOLD));
@@ -409,7 +446,6 @@ public class MicrobotPluginHubPanel extends PluginPanel {
     private final JLabel refreshing;
     private final JPanel mainPanel;
     private List<PluginItem> plugins = null;
-    private List<MicrobotPluginManifest> lastManifest;
 
     @Inject
     MicrobotPluginHubPanel(
@@ -535,46 +571,50 @@ public class MicrobotPluginHubPanel extends PluginPanel {
         reloadPluginList();
     }
 
-    private void reloadPluginList() {
-        if (refreshing.isVisible()) {
-            return;
-        }
+	private void reloadPluginList()
+	{
+		if (refreshing.isVisible())
+		{
+			return;
+		}
 
-        refreshing.setVisible(true);
-        mainPanel.removeAll();
+		refreshing.setVisible(true);
+		mainPanel.removeAll();
 
-        executor.submit(() ->
-        {
-            List<MicrobotPluginManifest> manifest;
-            try {
-                manifest = microbotPluginClient.downloadManifest();
-            } catch (IOException e) {
-                log.error("Error loading plugins from Microbot Hub", e);
-                SwingUtilities.invokeLater(() ->
-                {
-                    refreshing.setVisible(false);
-                    mainPanel.add(new JLabel("Downloading the plugin manifest failed"));
+		executor.submit(() ->
+		{
+			Collection<MicrobotPluginManifest> manifestCollection = microbotPluginManager.getManifestMap().values();
 
-                    JButton retry = new JButton("Retry");
-                    retry.addActionListener(l -> reloadPluginList());
-                    mainPanel.add(retry);
-                });
-                return;
-            }
+			Map<String, Integer> pluginCounts = Collections.emptyMap();
+			try
+			{
+				pluginCounts = microbotPluginClient.getPluginCounts();
+			}
+			catch (IOException e)
+			{
+				log.warn("Unable to download plugin counts", e);
+				SwingUtilities.invokeLater(() ->
+				{
+					refreshing.setVisible(false);
+					mainPanel.add(new JLabel("Downloading the plugin manifest failed"));
 
-            Map<String, Integer> pluginCounts = Collections.emptyMap();
-            try {
-                pluginCounts = microbotPluginClient.getPluginCounts();
-            } catch (IOException e) {
-                log.warn("Unable to download plugin counts", e);
-            }
+					JButton retry = new JButton("Retry");
+					retry.addActionListener(l -> reloadPluginList());
+					mainPanel.add(retry);
+					mainPanel.revalidate();
+				});
+			}
 
-            reloadPluginList(manifest, pluginCounts);
-        });
-    }
+			reloadPluginList(manifestCollection, pluginCounts);
+		});
+	}
 
-    private void reloadPluginList(List<MicrobotPluginManifest> manifest, Map<String, Integer> pluginCounts) {
-        lastManifest = manifest;
+    private void reloadPluginList(Collection<MicrobotPluginManifest> manifest, Map<String, Integer> pluginCounts) {
+
+        // Filter out disabled plugins before processing
+        List<MicrobotPluginManifest> enabledManifest = manifest.stream()
+                .filter(m -> !m.isDisable())
+                .collect(Collectors.toList());
 
         Predicate<Plugin> isExternalPluginPredicate = plugin ->
                 plugin.getClass().getAnnotation(PluginDescriptor.class).isExternal();
@@ -587,8 +627,8 @@ public class MicrobotPluginHubPanel extends PluginPanel {
 
         Set<String> installed = new HashSet<>(microbotPluginManager.getInstalledPlugins());
 
-        // Pre-index manifests by internalName (lowercased)
-        Map<String, MicrobotPluginManifest> manifestByName = manifest.stream()
+        // Pre-index manifests by internalName (lowercased) - using filtered list
+        Map<String, MicrobotPluginManifest> manifestByName = enabledManifest.stream()
                 .filter(m -> m.getInternalName() != null)
                 .collect(Collectors.toMap(
                         m -> m.getInternalName().toLowerCase(Locale.ROOT),
@@ -672,7 +712,6 @@ public class MicrobotPluginHubPanel extends PluginPanel {
         mainPanel.removeAll();
         refreshing.setVisible(false);
         plugins = null;
-        lastManifest = null;
 
         synchronized (iconLoadQueue) {
             for (PluginIcon pi; (pi = iconLoadQueue.poll()) != null; ) {
@@ -681,16 +720,10 @@ public class MicrobotPluginHubPanel extends PluginPanel {
         }
     }
 
-    @Subscribe
-    private void onExternalPluginsChanged(ExternalPluginsChanged ev) {
-        if (!refreshing.isVisible() && lastManifest != null) {
-            refreshing.setVisible(true);
-
-            Map<String, Integer> pluginCounts = plugins == null ? Collections.emptyMap()
-                    : plugins.stream().collect(Collectors.toMap(pi -> pi.manifest.getInternalName(), PluginItem::getUserCount));
-            executor.submit(() -> reloadPluginList(lastManifest, pluginCounts));
-        }
-    }
+	@Subscribe
+	private void onExternalPluginsChanged(ExternalPluginsChanged ev) {
+		reloadPluginList();
+	}
 
     // A utility class copied from the original PluginHubPanel
     private static class FixedWidthPanel extends JPanel {
