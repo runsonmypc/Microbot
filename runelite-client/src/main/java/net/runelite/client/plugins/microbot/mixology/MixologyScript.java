@@ -27,7 +27,7 @@ import static net.runelite.client.plugins.microbot.mixology.AlchemyObject.MIXING
 
 public class MixologyScript extends Script {
 
-    public final static String version = "1.0.2-beta";
+    public final static String version = "1.0.3-beta";
     private static final Integer DIGWEED = ItemID.MM_LAB_SPECIAL_HERB;
 
     public java.util.List<PotionOrder> potionOrders = Collections.emptyList();
