@@ -149,8 +149,8 @@ public class PyramidCourse implements AgilityCourseHandler {
         // Walking east toward low wall
         new ObstacleArea(3366, 2849, 3373, 2851, 2, 10865, new WorldPoint(3370, 2833, 2), "Low wall (floor 2) east"),
         
-        // After low wall at (3369-3370, 2834)
-        new ObstacleArea(3369, 2834, 3370, 2834, 2, 10859, new WorldPoint(3365, 2833, 2), "Gap jump (floor 2 end)"),
+        // After low wall at (3369-3370, 2833-2834)
+        new ObstacleArea(3369, 2833, 3370, 2834, 2, 10859, new WorldPoint(3365, 2833, 2), "Gap jump (floor 2 end)"),
         
         // After gap jump at (3363-3365, 2834)
         new ObstacleArea(3363, 2834, 3365, 2834, 2, 10857, new WorldPoint(3358, 2833, 2), "Stairs (floor 2 up)"),
